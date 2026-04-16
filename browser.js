@@ -1,5 +1,5 @@
 /**
- * Step 4: browser module
+ * Step 6: browser module
  * ----------------------
  * Owns Playwright browser actions.
  */
@@ -16,6 +16,10 @@ async function getPage() {
     context = await browser.newContext();
     page = await context.newPage();
   }
+  return page;
+}
+
+function getExistingPage() {
   return page;
 }
 
@@ -70,6 +74,7 @@ async function closeBrowser() {
 
 module.exports = {
   getPage,
+  getExistingPage,
   openWebsite,
   getCurrentTitle,
   getCurrentUrl,

@@ -1,11 +1,22 @@
 /**
  * aiParser.js
  * -----------
- * AI SDK 6 style:
+ * AI SDK 6 style structured command parser.
+ *
+ * Uses:
  * - generateText(...)
  * - output: Output.object({ schema })
  *
- * This returns a structured command object for your CLI browser assistant.
+ * Supports:
+ * - open_website
+ * - get_title
+ * - get_url
+ * - close_browser
+ * - inspect_page
+ * - list_buttons
+ * - list_links
+ * - exit
+ * - unknown
  */
 
 const { generateText, Output } = require("ai");
@@ -18,6 +29,9 @@ const commandSchema = z.object({
     "get_title",
     "get_url",
     "close_browser",
+    "inspect_page",
+    "list_buttons",
+    "list_links",
     "exit",
     "unknown",
   ]),
@@ -40,6 +54,22 @@ function parseSimpleCommands(message) {
   if (lower === "url") return { type: "get_url" };
   if (lower === "close browser") return { type: "close_browser" };
 
+  if (
+    lower === "inspect page" ||
+    lower === "what page is this" ||
+    lower === "page info"
+  ) {
+    return { type: "inspect_page" };
+  }
+
+  if (lower === "list buttons") {
+    return { type: "list_buttons" };
+  }
+
+  if (lower === "list links") {
+    return { type: "list_links" };
+  }
+
   return null;
 }
 
@@ -53,6 +83,9 @@ function normalizeCommand(obj) {
     "get_title",
     "get_url",
     "close_browser",
+    "inspect_page",
+    "list_buttons",
+    "list_links",
     "exit",
     "unknown",
   ]);
@@ -76,7 +109,7 @@ function normalizeCommand(obj) {
 }
 
 async function parseCommandWithAI(message) {
-  // deterministic shortcuts first
+  // Fast deterministic shortcuts first
   const simple = parseSimpleCommands(message);
   if (simple) return simple;
 
@@ -96,14 +129,42 @@ You are a command parser for a tiny CLI browser assistant.
 
 Map the user's message to exactly one command object.
 
+Supported commands:
+
+1. open_website
+- If the user wants to open, visit, go to, launch, or navigate to a website
+- Include the site/domain in "target"
+
+2. get_title
+- If the user asks for the current page title
+
+3. get_url
+- If the user asks for the current page URL
+
+4. close_browser
+- If the user wants to close the browser
+
+5. inspect_page
+- If the user asks what page this is
+- If the user asks for page info or to inspect the page
+
+6. list_buttons
+- If the user asks to list visible buttons on the page
+
+7. list_links
+- If the user asks to list visible links on the page
+
+8. exit
+- If the user wants to quit the CLI
+
+9. unknown
+- If none of the above apply
+
 Rules:
-- If the user wants to open, visit, go to, navigate to, or launch a website,
-  return type="open_website" and include the site/domain in "target".
-- If the user asks for the page title, return type="get_title".
-- If the user asks for the current URL, return type="get_url".
-- If the user asks to close the browser, return type="close_browser".
-- If the user asks to quit, return type="exit".
-- If unsure, return type="unknown".
+- If user mentions a website/domain, prefer "open_website"
+- Only include "target" for "open_website"
+- Do not invent websites
+- If unsure, return "unknown"
       `.trim(),
       prompt: message,
     });
@@ -120,3 +181,4 @@ Rules:
 module.exports = {
   parseCommandWithAI,
 };
+``

@@ -1,14 +1,7 @@
 /**
- * Step 4: command parser
+ * Step 6: command parser
  * ----------------------
- * Converts raw user chat into a simple structured command object.
- *
- * Supported commands:
- * - open <website>
- * - title
- * - url
- * - close browser
- * - exit
+ * Converts raw user chat into a structured command object.
  */
 
 function parseCommand(message) {
@@ -31,6 +24,22 @@ function parseCommand(message) {
     return { type: "close_browser" };
   }
 
+  if (
+    lower === "inspect page" ||
+    lower === "what page is this" ||
+    lower === "page info"
+  ) {
+    return { type: "inspect_page" };
+  }
+
+  if (lower === "list buttons") {
+    return { type: "list_buttons" };
+  }
+
+  if (lower === "list links") {
+    return { type: "list_links" };
+  }
+
   if (lower.startsWith("open ")) {
     const target = trimmed.slice(5).trim();
 
@@ -49,4 +58,3 @@ function parseCommand(message) {
 module.exports = {
   parseCommand,
 };
-``

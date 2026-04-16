@@ -1,9 +1,7 @@
 /**
- * Step 4: command executor
+ * Step 6: command executor
  * ------------------------
- * Takes a structured command object and executes the correct action.
- *
- * This keeps index.js very small and makes the app easier to extend later.
+ * Executes structured commands.
  */
 
 const {
@@ -11,9 +9,19 @@ const {
   closeBrowser,
   getCurrentTitle,
   getCurrentUrl,
+  getExistingPage,
 } = require("./browser");
 
+const { inspectPage } = require("./pageInspector");
+
 async function executeCommand(command) {
+  if (!command || typeof command !== "object" || !command.type) {
+    return {
+      success: false,
+      message: "⚠️ Invalid command received.",
+    };
+  }
+
   switch (command.type) {
     case "exit":
       await closeBrowser();
@@ -25,7 +33,6 @@ async function executeCommand(command) {
 
     case "open_website": {
       const result = await openWebsite(command.target);
-
       return {
         success: true,
         message: `✅ Page opened: ${result.url}\n📄 Page title: ${result.title}`,
@@ -34,7 +41,6 @@ async function executeCommand(command) {
 
     case "get_title": {
       const title = await getCurrentTitle();
-
       return {
         success: true,
         message: `📄 Current page title: ${title}`,
@@ -43,10 +49,47 @@ async function executeCommand(command) {
 
     case "get_url": {
       const url = await getCurrentUrl();
-
       return {
         success: true,
         message: `🌐 Current page URL: ${url}`,
+      };
+    }
+
+    case "inspect_page": {
+      const page = getExistingPage();
+      const info = await inspectPage(page);
+
+      return {
+        success: true,
+        message:
+          `📄 Title: ${info.title}\n` +
+          `🌐 URL: ${info.url}\n` +
+          `🔘 Buttons (${info.buttons.length}): ${info.buttons.join(", ") || "None"}\n` +
+          `🔗 Links (${info.links.length}): ${info.links.join(", ") || "None"}`,
+      };
+    }
+
+    case "list_buttons": {
+      const page = getExistingPage();
+      const info = await inspectPage(page);
+
+      return {
+        success: true,
+        message:
+          `🔘 Visible buttons (${info.buttons.length}):\n` +
+          (info.buttons.length ? info.buttons.map((b) => `- ${b}`).join("\n") : "None"),
+      };
+    }
+
+    case "list_links": {
+      const page = getExistingPage();
+      const info = await inspectPage(page);
+
+      return {
+        success: true,
+        message:
+          `🔗 Visible links (${info.links.length}):\n` +
+          (info.links.length ? info.links.map((l) => `- ${l}`).join("\n") : "None"),
       };
     }
 
@@ -62,7 +105,7 @@ async function executeCommand(command) {
       return {
         success: false,
         message:
-          "🤖 I don't understand yet.\nTry:\n  open google.com\n  title\n  url\n  close browser\n  exit",
+          "🤖 I couldn't understand that yet.\nTry:\n  open google.com\n  inspect page\n  list buttons\n  list links\n  title\n  url\n  close browser\n  exit",
       };
   }
 }
