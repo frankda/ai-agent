@@ -1,6 +1,6 @@
 /**
- * Step 7: command executor
- * ------------------------
+ * executor.js
+ * -----------
  * Executes structured commands.
  */
 
@@ -13,7 +13,10 @@ const {
 } = require("./browser");
 
 const { inspectPage } = require("./pageInspector");
-const { clickByVisibleText } = require("./clickActions");
+const { clickByVisibleText, isRiskyLabel } = require("./clickActions");
+const { fillInputField } = require("./inputActions");
+
+let pendingClickTarget = null;
 
 async function executeCommand(command) {
   if (!command || typeof command !== "object" || !command.type) {
@@ -95,11 +98,60 @@ async function executeCommand(command) {
     }
 
     case "click_text": {
+      const target = (command.target || "").trim();
+
+      if (!target) {
+        return {
+          success: false,
+          message: "⚠️ No click target provided.",
+        };
+      }
+
+      if (isRiskyLabel(target)) {
+        pendingClickTarget = target;
+        return {
+          success: false,
+          message:
+            `⚠️ Risky click detected: "${target}"\n` +
+            `If you really want it, say: confirm click ${target}`,
+        };
+      }
+
       const page = getExistingPage();
-      return await clickByVisibleText(page, command.target || "");
+      return await clickByVisibleText(page, target);
+    }
+
+    case "confirm_click_text": {
+      const target = (command.target || "").trim();
+
+      if (!pendingClickTarget) {
+        return {
+          success: false,
+          message: "⚠️ There is no pending risky click to confirm.",
+        };
+      }
+
+      if (pendingClickTarget.toLowerCase() !== target.toLowerCase()) {
+        return {
+          success: false,
+          message:
+            `⚠️ Confirmation target mismatch.\nPending: "${pendingClickTarget}"\nReceived: "${target}"`,
+        };
+      }
+
+      const page = getExistingPage();
+      const result = await clickByVisibleText(page, target);
+      pendingClickTarget = null;
+      return result;
+    }
+
+    case "fill_input": {
+      const page = getExistingPage();
+      return await fillInputField(page, command.target || "", command.value || "");
     }
 
     case "close_browser":
+      pendingClickTarget = null;
       await closeBrowser();
       return {
         success: true,
@@ -111,7 +163,15 @@ async function executeCommand(command) {
       return {
         success: false,
         message:
-          "🤖 I couldn't understand that yet.\nTry:\n  open google.com\n  inspect page\n  list buttons\n  list links\n  click Gmail\n  close browser\n  exit",
+          "🤖 I couldn't understand that yet.\nTry:\n" +
+          "  open google.com\n" +
+          "  inspect page\n" +
+          "  list buttons\n" +
+          "  list links\n" +
+          "  click Gmail\n" +
+          "  type Frank Da into Name\n" +
+          "  close browser\n" +
+          "  exit",
       };
   }
 }

@@ -1,7 +1,8 @@
 /**
  * aiParser.js
  * -----------
- * AI SDK 6 style structured command parser.
+ * AI SDK 6 structured command parser.
+ * No commands.js needed.
  */
 
 const { generateText, Output } = require("ai");
@@ -18,10 +19,13 @@ const commandSchema = z.object({
     "list_buttons",
     "list_links",
     "click_text",
+    "confirm_click_text",
+    "fill_input",
     "exit",
     "unknown",
   ]),
   target: z.string().optional(),
+  value: z.string().optional(),
 });
 
 const localProvider = createOpenAICompatible({
@@ -48,17 +52,37 @@ function parseSimpleCommands(message) {
     return { type: "inspect_page" };
   }
 
-  if (lower === "list buttons") {
-    return { type: "list_buttons" };
-  }
-
-  if (lower === "list links") {
-    return { type: "list_links" };
-  }
+  if (lower === "list buttons") return { type: "list_buttons" };
+  if (lower === "list links") return { type: "list_links" };
 
   if (lower.startsWith("click ")) {
     const target = trimmed.slice(6).trim();
     return target ? { type: "click_text", target } : { type: "unknown" };
+  }
+
+  if (lower.startsWith("confirm click ")) {
+    const target = trimmed.slice("confirm click ".length).trim();
+    return target ? { type: "confirm_click_text", target } : { type: "unknown" };
+  }
+
+  // type <value> into <field>
+  const typeIntoMatch = trimmed.match(/^type\s+(.+)\s+into\s+(.+)$/i);
+  if (typeIntoMatch) {
+    const value = typeIntoMatch[1].trim().replace(/^"|"$/g, "");
+    const target = typeIntoMatch[2].trim().replace(/^"|"$/g, "");
+
+    if (value && target) {
+      return {
+        type: "fill_input",
+        target,
+        value,
+      };
+    }
+  }
+
+  if (lower.startsWith("open ")) {
+    const target = trimmed.slice(5).trim();
+    return target ? { type: "open_website", target } : { type: "unknown" };
   }
 
   return null;
@@ -78,6 +102,8 @@ function normalizeCommand(obj) {
     "list_buttons",
     "list_links",
     "click_text",
+    "confirm_click_text",
+    "fill_input",
     "exit",
     "unknown",
   ]);
@@ -86,7 +112,11 @@ function normalizeCommand(obj) {
     return { type: "unknown" };
   }
 
-  if (obj.type === "open_website" || obj.type === "click_text") {
+  if (
+    obj.type === "open_website" ||
+    obj.type === "click_text" ||
+    obj.type === "confirm_click_text"
+  ) {
     if (!obj.target || typeof obj.target !== "string" || !obj.target.trim()) {
       return { type: "unknown" };
     }
@@ -94,6 +124,25 @@ function normalizeCommand(obj) {
     return {
       type: obj.type,
       target: obj.target.trim(),
+    };
+  }
+
+  if (obj.type === "fill_input") {
+    if (
+      !obj.target ||
+      typeof obj.target !== "string" ||
+      !obj.target.trim() ||
+      !obj.value ||
+      typeof obj.value !== "string" ||
+      !obj.value.trim()
+    ) {
+      return { type: "unknown" };
+    }
+
+    return {
+      type: "fill_input",
+      target: obj.target.trim(),
+      value: obj.value.trim(),
     };
   }
 
@@ -124,7 +173,7 @@ Supported commands:
 
 1. open_website
 - If the user wants to open, visit, go to, launch, or navigate to a website
-- Include the site/domain in "target"
+- Put the site/domain into "target"
 
 2. get_title
 - If the user asks for the current page title
@@ -140,37 +189,50 @@ Supported commands:
 - If the user asks for page info or to inspect the page
 
 6. list_buttons
-- If the user asks to list visible buttons on the page
+- If the user asks to list visible buttons
 
 7. list_links
-- If the user asks to list visible links on the page
+- If the user asks to list visible links
 
 8. click_text
-- If the user wants to click a button or link by visible text
+- If the user wants to click a visible button or link
 - Put the visible label into "target"
-- Examples:
-  - "click Gmail"
-  - "click Images"
-  - "click Sign in"
 
-9. exit
+9. confirm_click_text
+- If the user explicitly confirms a previously requested risky click
+- Put the same visible label into "target"
+
+10. fill_input
+- If the user wants to type text into an input field
+- Put the field name into "target"
+- Put the text value into "value"
+- Examples:
+  - "type Frank Da into Name"
+  - "type 0400111222 into Phone"
+  - "type iPhone into Search"
+
+11. exit
 - If the user wants to quit the CLI
 
-10. unknown
+12. unknown
 - If none of the above apply
 
 Rules:
-- If user mentions a website/domain, prefer "open_website"
-- Only include "target" for "open_website" and "click_text"
-- Do not invent websites
-- Do not invent button/link labels
-- If unsure, return "unknown"
+- Only include "target" for:
+  - open_website
+  - click_text
+  - confirm_click_text
+  - fill_input
+- Only include "value" for fill_input
+- Do not invent sites
+- Do not invent button labels
+- Do not invent field names
+- If unsure, return unknown
       `.trim(),
       prompt: message,
     });
 
     console.log("DEBUG structured output:", result.output);
-
     return normalizeCommand(result.output);
   } catch (err) {
     console.error("AI parser error:", err.message);

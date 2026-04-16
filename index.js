@@ -1,13 +1,3 @@
-/**
- * Step 4: CLI chat + parser + executor
- * ------------------------------------
- * index.js is now only responsible for:
- * - reading user input
- * - parsing commands
- * - executing commands
- * - printing results
- */
-
 const readline = require("readline");
 const { parseCommandWithAI } = require("./aiParser");
 const { executeCommand } = require("./executor");
@@ -19,8 +9,9 @@ const rl = readline.createInterface({
 
 async function handleUserMessage(message) {
   const command = await parseCommandWithAI(message);
-  const result = await executeCommand(command);
+  console.log("DEBUG command:", command);
 
+  const result = await executeCommand(command);
   console.log(result.message);
 
   if (result.shouldExit) {
@@ -41,12 +32,12 @@ function prompt() {
 }
 
 console.log("✅ Simple CLI Chat Started");
-console.log("Try:");
+console.log("Examples:");
 console.log("  open google.com");
-console.log("  title");
-console.log("  url");
-console.log("  close browser");
+console.log("  inspect page");
+console.log("  list links");
+console.log("  click Gmail");
+console.log("  type Frank Da into Name");
 console.log("  exit");
 
 prompt();
-``
