@@ -1,5 +1,5 @@
 /**
- * Step 6: command executor
+ * Step 7: command executor
  * ------------------------
  * Executes structured commands.
  */
@@ -13,6 +13,7 @@ const {
 } = require("./browser");
 
 const { inspectPage } = require("./pageInspector");
+const { clickByVisibleText } = require("./clickActions");
 
 async function executeCommand(command) {
   if (!command || typeof command !== "object" || !command.type) {
@@ -93,6 +94,11 @@ async function executeCommand(command) {
       };
     }
 
+    case "click_text": {
+      const page = getExistingPage();
+      return await clickByVisibleText(page, command.target || "");
+    }
+
     case "close_browser":
       await closeBrowser();
       return {
@@ -105,7 +111,7 @@ async function executeCommand(command) {
       return {
         success: false,
         message:
-          "🤖 I couldn't understand that yet.\nTry:\n  open google.com\n  inspect page\n  list buttons\n  list links\n  title\n  url\n  close browser\n  exit",
+          "🤖 I couldn't understand that yet.\nTry:\n  open google.com\n  inspect page\n  list buttons\n  list links\n  click Gmail\n  close browser\n  exit",
       };
   }
 }

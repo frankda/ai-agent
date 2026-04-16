@@ -2,21 +2,6 @@
  * aiParser.js
  * -----------
  * AI SDK 6 style structured command parser.
- *
- * Uses:
- * - generateText(...)
- * - output: Output.object({ schema })
- *
- * Supports:
- * - open_website
- * - get_title
- * - get_url
- * - close_browser
- * - inspect_page
- * - list_buttons
- * - list_links
- * - exit
- * - unknown
  */
 
 const { generateText, Output } = require("ai");
@@ -32,6 +17,7 @@ const commandSchema = z.object({
     "inspect_page",
     "list_buttons",
     "list_links",
+    "click_text",
     "exit",
     "unknown",
   ]),
@@ -70,6 +56,11 @@ function parseSimpleCommands(message) {
     return { type: "list_links" };
   }
 
+  if (lower.startsWith("click ")) {
+    const target = trimmed.slice(6).trim();
+    return target ? { type: "click_text", target } : { type: "unknown" };
+  }
+
   return null;
 }
 
@@ -86,6 +77,7 @@ function normalizeCommand(obj) {
     "inspect_page",
     "list_buttons",
     "list_links",
+    "click_text",
     "exit",
     "unknown",
   ]);
@@ -94,13 +86,13 @@ function normalizeCommand(obj) {
     return { type: "unknown" };
   }
 
-  if (obj.type === "open_website") {
+  if (obj.type === "open_website" || obj.type === "click_text") {
     if (!obj.target || typeof obj.target !== "string" || !obj.target.trim()) {
       return { type: "unknown" };
     }
 
     return {
-      type: "open_website",
+      type: obj.type,
       target: obj.target.trim(),
     };
   }
@@ -109,7 +101,6 @@ function normalizeCommand(obj) {
 }
 
 async function parseCommandWithAI(message) {
-  // Fast deterministic shortcuts first
   const simple = parseSimpleCommands(message);
   if (simple) return simple;
 
@@ -154,16 +145,25 @@ Supported commands:
 7. list_links
 - If the user asks to list visible links on the page
 
-8. exit
+8. click_text
+- If the user wants to click a button or link by visible text
+- Put the visible label into "target"
+- Examples:
+  - "click Gmail"
+  - "click Images"
+  - "click Sign in"
+
+9. exit
 - If the user wants to quit the CLI
 
-9. unknown
+10. unknown
 - If none of the above apply
 
 Rules:
 - If user mentions a website/domain, prefer "open_website"
-- Only include "target" for "open_website"
+- Only include "target" for "open_website" and "click_text"
 - Do not invent websites
+- Do not invent button/link labels
 - If unsure, return "unknown"
       `.trim(),
       prompt: message,
@@ -181,4 +181,3 @@ Rules:
 module.exports = {
   parseCommandWithAI,
 };
-``
