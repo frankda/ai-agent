@@ -12,6 +12,8 @@ export const commandTypeSchema = z.enum([
   "click_text",
   "confirm_click_text",
   "fill_input",
+  "show_state",
+  "reset_state",
   "exit",
   "unknown",
 ]);
@@ -36,5 +38,7 @@ export type Command =
   | { type: "list_buttons" }
   | { type: "list_links" }
   | { type: "list_inputs" }
+  | { type: "show_state" }
+  | { type: "reset_state" }
   | { type: "exit" }
   | { type: "unknown" };

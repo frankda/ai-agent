@@ -9,6 +9,12 @@ import { clickByVisibleText, isRiskyLabel } from "./clickActions.js";
 import { inspectFormFields } from "./formInspector.js";
 import { fillInputField } from "./inputActions.js";
 import { inspectPage } from "./pageInspector.js";
+import {
+  detectCustomerField,
+  formatState,
+  resetState,
+  updateState,
+} from "./sessionState.js";
 import type { Command } from "./types/commands.js";
 import type { FormField } from "./types/forms.js";
 import type { ExecutionResult } from "./types/results.js";
@@ -60,6 +66,7 @@ export async function executeCommand(command: Command): Promise<ExecutionResult>
       }
 
       const result = await openWebsite(target);
+      updateState({ currentUrl: result.url, journeyStep: "product_selection" });
       return {
         success: true,
         message: `✅ Page opened: ${result.url}\n📄 Page title: ${result.title}`,
@@ -209,7 +216,31 @@ export async function executeCommand(command: Command): Promise<ExecutionResult>
         };
       }
 
-      return fillInputField(page, field, value);
+      const fillResult = await fillInputField(page, field, value);
+
+      if (fillResult.success) {
+        const stateKey = detectCustomerField(field);
+        if (stateKey) {
+          updateState({ [stateKey]: value });
+        }
+      }
+
+      return fillResult;
+    }
+
+    case "show_state": {
+      return {
+        success: true,
+        message: formatState(),
+      };
+    }
+
+    case "reset_state": {
+      resetState();
+      return {
+        success: true,
+        message: "🔄 Session state has been reset.",
+      };
     }
 
     case "close_browser": {

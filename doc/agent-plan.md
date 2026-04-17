@@ -350,32 +350,39 @@ The current system is already capable of a basic interactive browser assistant w
 
 # Remaining Planned Steps
 
-## Step 10 — Guided Checkout State
+## Step 10 — Guided Checkout State ✅
 
 ### Goal
 Add persistent session state.
 
 ### What this step does
-Introduce a state module that remembers things like:
-- current website
-- current page
-- selected product
-- selected color
-- selected capacity
-- SIM choice
-- user name
-- phone number
-- email
-- current workflow step
+Introduces `src/sessionState.ts` and `src/types/session.ts`.
+
+The state module tracks:
+- `deviceModel`, `color`, `storage`, `simChoice` — product selections
+- `customerName`, `customerPhone`, `customerEmail`, `customerAddress` — customer info
+- `journeyStep` — current stage: idle, product_selection, cart, checkout, customer_info, review
+- `currentUrl` — updated automatically on every `open_website` command
+- `pendingQuestion` — used by future orchestrator to track what is still being asked
+
+### What was implemented
+- `src/types/session.ts` — `SessionState` interface and `JourneyStep` union type
+- `src/sessionState.ts` — `getState`, `updateState`, `resetState`, `formatState`, `detectCustomerField`
+- `show state` / `memory` / `session` command → displays full state in the CLI
+- `reset state` / `clear state` command → clears all state back to defaults
+- `open_website` now automatically updates `currentUrl` and sets `journeyStep` to `product_selection`
+- `fill_input` now automatically captures customer fields (name, phone, email, address) into session state
+
+### How to verify
+1. Run: `pnpm build && pnpm start`
+2. Type: `show state` — should show all fields as `—`
+3. Type: `type Frank Da into Name` — then `show state` — Name should be captured
+4. Type: `reset state` — then `show state` — all fields back to `—`
+5. Type: `open google.com` — then `show state` — URL and journey step should update
 
 ### Why it matters
 Without state, the agent only reacts turn-by-turn.
-With state, it becomes a real assistant that remembers context.
-
-### Likely new file
-- `src/sessionState.ts`
-or
-- `src/conversationState.ts`
+With state, it becomes a real assistant that remembers context across the conversation.
 
 ---
 

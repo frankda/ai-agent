@@ -30,6 +30,23 @@ function parseSimpleCommands(message: string): Command | null {
   if (lower === "list links") return { type: "list_links" };
 
   if (
+    lower === "show state" ||
+    lower === "memory" ||
+    lower === "what do you remember" ||
+    lower === "session"
+  ) {
+    return { type: "show_state" };
+  }
+
+  if (
+    lower === "reset state" ||
+    lower === "clear state" ||
+    lower === "forget everything"
+  ) {
+    return { type: "reset_state" };
+  }
+
+  if (
     lower === "list inputs" ||
     lower === "inspect form" ||
     lower === "list fields" ||
@@ -115,6 +132,8 @@ function normalizeCommand(obj: unknown): Command {
     "list_buttons",
     "list_links",
     "list_inputs",
+    "show_state",
+    "reset_state",
     "exit",
     "unknown",
   ]);
