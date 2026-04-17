@@ -1,311 +1,635 @@
-# AI Shopping Agent Demo — Implementation Plan
+# Browser Agent Demo — Step-by-Step Build Plan
 
-## 1. Project Summary
+## Project Goal
 
-Build a demo AI agent in Node.js that uses a local LLM to understand a user’s shopping intent from chat, then uses browser automation to operate an internal or staging shopping website.
+Build a simple browser automation agent in Node.js that:
 
-The agent should:
-- understand natural language requests like “I want to buy an iPhone 16 Pro in black with 256GB and add an eSIM”
-- extract structured shopping intent from conversation
-- navigate a browser using Playwright
-- select product variations such as model, color, storage, and accessories
-- continue through a staged checkout flow
-- ask the user for missing required information such as full name and phone number
-- fill that information into the checkout form
-- stop at the final review/confirmation step instead of placing a real order
+1. accepts user input from a terminal chat
+2. uses an AI parser to convert natural language into structured commands
+3. controls a browser using Playwright
+4. inspects pages and forms
+5. clicks visible elements
+6. fills safe input fields
+7. evolves into a guided shopping / checkout assistant
 
-This project is a demo/prototype, so the design should prioritize:
-- simplicity
-- clarity
-- stability
-- safe behavior
-- easy debugging
-- clean architecture for future expansion
+This project is being built incrementally, fail-by-fail, with each step adding one clear capability.
 
 ---
 
-## 2. Primary Goal
+# High-Level Architecture
 
-Create a working end-to-end demo that proves the following concept:
+The current architecture is:
 
-> A local-LLM-powered assistant can understand a shopping request from chat, control a browser in a deterministic way, collect missing information interactively, and advance the workflow until the review step.
+User input  
+→ `index.js`  
+→ `aiParser.js`  
+→ `executor.js`  
+→ browser/page/form action modules
 
----
+Core flow:
 
-## 3. Non-Goals
-
-The following are explicitly out of scope for the first version:
-
-- submitting real purchases
-- entering or processing payment details
-- bypassing MFA, OTP, CAPTCHA, or identity checks
-- arbitrary browsing across unknown external websites
-- handling every possible product category
-- building a generic autonomous browser agent
-- long-term memory or personalization
-- multi-user production hardening
-- distributed infrastructure
-
-The first version should be domain-specific and intentionally constrained.
+- `index.js` handles terminal input/output
+- `aiParser.js` converts user text into a structured command object
+- `executor.js` executes the command
+- browser modules perform page actions
 
 ---
 
-## 4. Supported Demo Scenario
+# Current File Roles
 
-The first version only needs to support one narrow scenario:
+## `index.js`
+Owns the CLI chat loop.
 
-### Supported journey
-1. User opens chat
-2. User says they want to buy an iPhone
-3. Agent extracts:
-   - phone model
-   - color
-   - storage/capacity
-   - whether SIM is needed
-   - SIM type if applicable
-4. Agent opens the internal/staging shopping site
-5. Agent navigates to the phone catalog
-6. Agent selects the requested device
-7. Agent selects the requested configuration
-8. Agent adds a SIM card if requested
-9. Agent goes to cart / checkout
-10. If required checkout info is missing, the agent asks the user for it
-11. Agent fills the provided customer information
-12. Agent continues to the review page
-13. Agent stops before final submission and reports status
+Responsibilities:
+- accept terminal input
+- send input to `aiParser.js`
+- pass parsed command to `executor.js`
+- print results to terminal
 
-### Initial supported product family
-- iPhone only
+## `aiParser.js`
+Converts natural language into structured commands.
 
-### Initial supported variants
-- Model
-- Color
-- Storage
-- SIM / eSIM add-on
+Examples:
+- `open google.com`
+- `list buttons`
+- `click Gmail`
+- `type Frank Da into Name`
 
----
+## `executor.js`
+Routes parsed commands to the correct browser or inspection module.
 
-## 5. High-Level Architecture
+## `browser.js`
+Owns Playwright browser lifecycle and basic navigation.
 
-Use a constrained agent architecture rather than a fully autonomous browser agent.
+## `pageInspector.js`
+Inspects the current page.
 
-### Principle
-The LLM should not directly click arbitrary selectors or type arbitrary raw commands into the browser.
+It returns:
+- title
+- URL
+- visible buttons
+- visible links
 
-Instead, the LLM should only be allowed to call approved business-level tools.
+## `clickActions.js`
+Clicks visible buttons or links by exact visible text.
 
-### Architecture layers
+## `inputActions.js`
+Fills safe text-like fields using:
+- labels
+- placeholders
+- accessible textbox names
+- generic DOM scanning fallback
 
-#### 5.1 Chat / API Layer
-Responsible for:
-- receiving user messages
-- maintaining conversation state
-- triggering the planning/execution loop
-- sending questions back to the user when required data is missing
-
-#### 5.2 LLM Reasoning Layer
-Responsible for:
-- interpreting user intent
-- extracting structured shopping parameters
-- deciding which approved tool to call next
-- deciding when more user information is required
-- deciding when to stop
-
-This layer should work with a local model.
-
-#### 5.3 Tool Layer
-Expose domain-safe actions such as:
-- openStore()
-- goToPhones()
-- selectIPhoneModel()
-- selectColor()
-- selectCapacity()
-- addSimCard()
-- openCart()
-- goToCheckout()
-- fillCustomerInfo()
-- getPageState()
-- stopBeforeFinalSubmit()
-
-These tools act as the only interface between the LLM and browser automation.
-
-#### 5.4 Browser Automation Layer
-Use Playwright to:
-- launch browser
-- navigate pages
-- locate elements
-- click buttons
-- select options
-- fill forms
-- collect page state
-
-#### 5.5 State Layer
-Maintain:
-- conversation state
-- extracted shopping intent
-- current workflow step
-- missing fields
-- selected options
-- browser session reference
-- execution log
+## `formInspector.js`
+Inspects fillable fields on the current page and returns:
+- labels
+- placeholders
+- IDs
+- names
+- aria-labels
+- input types
+- sensitivity flags
 
 ---
 
-## 6. Recommended Tech Stack
+# Step-by-Step Build History
 
-### Runtime
-- Node.js
-- TypeScript
+## Step 1 — CLI Chat
 
-### AI
-- Vercel AI SDK
-- Local LLM through either:
-  - Ollama
-  - or an OpenAI-compatible local endpoint
+### Goal
+Get a terminal chat loop working.
 
-### Automation
-- Playwright
+### What this step does
+Allows the user to type commands into the terminal.
 
-### Validation / schemas
-- Zod
+### Result
+A minimal chat program that accepts user input continuously.
 
-### Optional web server
-- Express or Next.js API route
-- keep minimal for demo simplicity
-
-### Optional UI
-- simple terminal chat or minimal web chat UI
-- avoid spending too much time on UI in first version
+### Why it matters
+This is the base interaction loop for the entire agent.
 
 ---
 
-## 7. Design Principles
+## Step 2 — Browser Module
 
-### 7.1 Constrained Tool Use
-The AI must only use approved business actions, not raw browser primitives.
+### Goal
+Separate browser automation from the chat logic.
 
-### 7.2 Deterministic Automation
-Use robust Playwright locators and deterministic flows.
+### What this step does
+Moves Playwright browser startup and website opening into `browser.js`.
 
-### 7.3 Human-in-the-Loop
-The agent must ask for missing required data and must not finalize a real order.
+### Result
+The project becomes modular:
+- chat logic stays in `index.js`
+- browser control lives in `browser.js`
 
-### 7.4 Debuggability
-Every step should produce logs:
-- tool chosen
-- tool input
-- page URL
-- selected options
-- errors
-- screenshots or traces if needed
-
-### 7.5 Narrow Scope First
-Support one product family and one purchase path first.
-
-### 7.6 Graceful Failure
-If an option is unavailable or UI changes, the system should:
-- retry carefully
-- ask for clarification
-- or fail with a clear explanation
+### Why it matters
+This separation is required before adding AI and more complex actions.
 
 ---
 
-## 8. Functional Requirements
+## Step 3 — Structured Command Flow
 
-### 8.1 Conversation Handling
-The system must:
-- accept free-text user requests
-- extract shopping parameters
-- track missing required information
-- ask follow-up questions when necessary
+### Goal
+Move away from hardcoded inline logic.
 
-### 8.2 Intent Extraction
-The system must identify:
-- product type
-- model
-- color
-- capacity
-- SIM requirement
-- SIM type
-- customer full name
+### What this step does
+Introduces the concept of a structured command object.
+
+Examples:
+- `{ type: "open_website", target: "google.com" }`
+- `{ type: "exit" }`
+
+### Result
+The system starts to look like:
+- user input
+- parsed command
+- executed action
+
+### Why it matters
+This is the bridge toward AI command parsing.
+
+---
+
+## Step 4 — Executor Layer
+
+### Goal
+Separate command execution from chat and parsing.
+
+### What this step does
+Introduces `executor.js`.
+
+### Result
+`executor.js` becomes the module that decides:
+- which action to run
+- which browser method to call
+
+### Why it matters
+This makes the architecture cleaner and easier to grow.
+
+---
+
+## Step 5 — AI Parser
+
+### Goal
+Replace rule-based command parsing with AI-based parsing.
+
+### What this step does
+Uses a local model and AI SDK structured output to convert natural language into a command object.
+
+Examples:
+- `go to github.com`
+- `what page is this`
+- `click Gmail`
+
+### Result
+The app can understand more natural language instead of relying only on exact string matching.
+
+### Why it matters
+This is the first real “agent-like” capability.
+
+---
+
+## Step 6 — Page Inspection
+
+### Goal
+Make the agent able to observe the current page.
+
+### What this step does
+Introduces `pageInspector.js`.
+
+It extracts:
+- page title
+- current URL
+- visible buttons
+- visible links
+
+### Result
+The agent can inspect the current page before acting.
+
+### Why it matters
+An agent should not just act — it must also observe.
+
+---
+
+## Step 7 — Click Actions
+
+### Goal
+Allow the agent to click visible buttons or links by text.
+
+### What this step does
+Introduces `clickActions.js`.
+
+Example actions:
+- `click Gmail`
+- `click Sign in`
+
+### Result
+The agent can navigate the UI using visible text.
+
+### Why it matters
+This is the first direct browser interaction beyond opening websites.
+
+---
+
+## Step 8 — Input Actions
+
+### Goal
+Allow the agent to type into text-like fields.
+
+### What this step does
+Introduces `inputActions.js`.
+
+It supports:
+- label matching
+- placeholder matching
+- textbox accessible name matching
+- generic DOM fallback scanning
+
+### Result
+The agent can fill standard non-sensitive fields.
+
+Examples:
+- `type Frank Da into Name`
+- `type 0400111222 into Phone`
+- `type iPhone into Search`
+
+### Why it matters
+This is a key requirement for checkout and shopping workflows.
+
+---
+
+## Step 9 — Form Inspection
+
+### Goal
+Allow the agent to discover available inputs before filling them.
+
+### What this step does
+Introduces `formInspector.js`.
+
+It scans the current page for fillable fields and returns:
+- labels
+- placeholders
+- names
+- IDs
+- aria-labels
+- autocomplete hints
+- field types
+- sensitivity flags
+
+### Result
+The agent can inspect the form before deciding what to fill.
+
+### Why it matters
+This makes input filling much more reliable and is essential for checkout automation.
+
+---
+
+# What Step 9 Means in Practice
+
+Before Step 9:
+- the agent tries to fill a field by guessing the field name
+
+After Step 9:
+- the agent can inspect the form first
+- see exactly what fields exist
+- choose the correct field name
+- ask the user for missing information more intelligently
+
+Example:
+
+User:
+- `list inputs`
+
+Agent:
+- Full Name
+- Phone Number
+- Email Address
+- Delivery Address
+
+Then:
+
+User:
+- `type Frank Da into Full Name`
+
+This is much more reliable than blindly guessing field names.
+
+---
+
+# Current Capability Summary
+
+At this point, the agent can:
+
+- open websites
+- inspect pages
+- list buttons
+- list links
+- click visible elements
+- list form fields
+- fill safe text fields
+- understand natural language commands via AI parser
+
+The current system is already capable of a basic interactive browser assistant workflow.
+
+---
+
+# Remaining Planned Steps
+
+## Step 10 — Guided Checkout State
+
+### Goal
+Add persistent session state.
+
+### What this step does
+Introduce a state module that remembers things like:
+- current website
+- current page
+- selected product
+- selected color
+- selected capacity
+- SIM choice
+- user name
 - phone number
+- email
+- current workflow step
 
-### 8.3 Browser Actions
-The system must be able to:
-- open the store
-- navigate to phone category
-- choose a supported iPhone model
-- choose a valid color
-- choose a valid capacity
-- add SIM card if requested
-- move to cart
-- move to checkout
-- fill customer info
+### Why it matters
+Without state, the agent only reacts turn-by-turn.
+With state, it becomes a real assistant that remembers context.
 
-### 8.4 Checkout Data Collection
-If checkout page requires information that has not been provided, the system must ask the user before proceeding.
-
-### 8.5 Safety Stop
-The system must stop at the final review or confirmation step.
+### Likely new file
+- `sessionState.js`
+or
+- `conversationState.js`
 
 ---
 
-## 9. Non-Functional Requirements
+## Step 11 — Product Selection Tools
 
-### 9.1 Reliability
-- should complete the happy path consistently on the demo site
+### Goal
+Introduce domain-specific product actions.
 
-### 9.2 Maintainability
-- use modular folder structure
-- separate AI logic from browser logic
+### What this step does
+Move from generic clicks to shopping-specific actions like:
+- choose phone model
+- choose color
+- choose capacity
+- add SIM card
 
-### 9.3 Testability
-- core intent extraction and tool orchestration should be unit-testable
-- browser flow should have integration tests where feasible
+### Why it matters
+This makes the demo more stable and much easier to manage than raw clicking.
 
-### 9.4 Observability
-- structured logs for each step
-- optional Playwright traces/screenshots
-
-### 9.5 Local-First
-- model inference should work locally
+### Likely new file
+- `shoppingActions.js`
+or
+- `productActions.js`
 
 ---
 
-## 10. Suggested Folder Structure
+## Step 12 — Missing-Information Detection
 
-```text
-project-root/
-├─ src/
-│  ├─ agent/
-│  │  ├─ prompts/
-│  │  ├─ schemas/
-│  │  ├─ shoppingAgent.ts
-│  │  ├─ planner.ts
-│  │  └─ conversationState.ts
-│  ├─ browser/
-│  │  ├─ browserManager.ts
-│  │  ├─ storeTools.ts
-│  │  ├─ pageState.ts
-│  │  └─ locators.ts
-│  ├─ app/
-│  │  ├─ api.ts
-│  │  └─ server.ts
-│  ├─ ui/
-│  │  └─ demoChat.ts
-│  ├─ utils/
-│  │  ├─ logger.ts
-│  │  ├─ errors.ts
-│  │  └─ config.ts
-│  └─ index.ts
-├─ tests/
-│  ├─ unit/
-│  └─ e2e/
-├─ docs/
-│  ├─ ai-shopping-agent-plan.md
-│  ├─ architecture.md
-│  └─ decisions.md
-├─ .env.example
-├─ package.json
-├─ tsconfig.json
-└─ README.md
+### Goal
+Teach the agent to know what user data is missing.
+
+### What this step does
+Use form inspection plus session state to detect:
+- what fields are required
+- what data is already known
+- what the user still needs to provide
+
+### Example
+If checkout requires:
+- Full Name
+- Phone Number
+- Email
+
+and only Name is known, the agent asks:
+- “I still need your phone number and email.”
+
+### Why it matters
+This is the start of a guided checkout assistant.
+
+---
+
+## Step 13 — Multi-Turn Conversation Memory
+
+### Goal
+Remember user-provided data across multiple messages.
+
+### What this step does
+Store things like:
+- product preference
+- selected phone model
+- preferred color
+- provided phone number
+- provided email
+- whether SIM is needed
+
+### Why it matters
+This is required for a realistic shopping assistant.
+
+---
+
+## Step 14 — Checkout Auto-Fill Loop
+
+### Goal
+Create a guided form-filling loop.
+
+### What this step does
+The agent should:
+1. inspect checkout form
+2. detect missing fields
+3. ask user for missing information
+4. fill fields
+5. re-check if more information is still needed
+
+### Why it matters
+This is where the demo becomes genuinely useful.
+
+---
+
+## Step 15 — Safer Page Progression
+
+### Goal
+Move forward through checkout safely.
+
+### What this step does
+Allow the agent to:
+- click Continue
+- click Next
+- go to Cart
+- go to Checkout
+
+while still:
+- asking for confirmation on risky actions
+- stopping before irreversible submission
+
+### Why it matters
+This lets the agent move through multi-step flows more naturally.
+
+---
+
+## Step 16 — Domain-Specific Shopping Workflow
+
+### Goal
+Assemble the full shopping demo.
+
+### What this step does
+Implement a narrow, deterministic shopping workflow such as:
+- open store
+- find iPhone
+- choose model
+- choose color
+- choose storage
+- add SIM
+- go to cart
+- go to checkout
+- fill customer information
+- stop at review page
+
+### Why it matters
+This is the first “demo-complete” milestone.
+
+---
+
+## Step 17 — Logging and Debug Trace
+
+### Goal
+Improve debugging and visibility.
+
+### What this step does
+Add structured logs for:
+- user input
+- parsed command
+- action taken
+- page title
+- page URL
+- clicked target
+- filled field
+- errors
+
+Optional additions:
+- screenshots
+- Playwright trace
+- debug replay output
+
+### Why it matters
+Browser automation becomes much easier to debug.
+
+---
+
+## Step 18 — Retry and Fallback Logic
+
+### Goal
+Make the agent more robust.
+
+### What this step does
+Add fallback behaviors like:
+- retry a click once if it fails
+- retry form fill with another strategy
+- inspect form again if field is not found
+- inspect page again if navigation changes unexpectedly
+
+### Why it matters
+This reduces brittleness and improves demo reliability.
+
+---
+
+## Step 19 — Domain Tools Instead of Raw Actions
+
+### Goal
+Move from generic commands to domain-level tools.
+
+### What this step does
+Replace low-level actions like:
+- `click_text`
+- `fill_input`
+
+with high-level tools like:
+- `openStore`
+- `selectPhoneModel`
+- `selectColor`
+- `selectCapacity`
+- `addSimCard`
+- `fillCustomerInfo`
+
+### Why it matters
+This is cleaner, safer, and easier to maintain.
+
+---
+
+## Step 20 — Demo Polish
+
+### Goal
+Prepare for final presentation/demo.
+
+### What this step does
+Improve:
+- terminal output
+- logging readability
+- setup scripts
+- README
+- sample prompts
+- walkthrough instructions
+- optional minimal UI if desired
+
+### Why it matters
+Makes the project easier to run, explain, and demonstrate.
+
+---
+
+# Recommended Remaining Build Order
+
+From this point, the recommended order is:
+
+1. Step 10 — Guided checkout state
+2. Step 11 — Product selection tools
+3. Step 12 — Missing-information detection
+4. Step 13 — Multi-turn conversation memory
+5. Step 14 — Checkout auto-fill loop
+6. Step 15 — Safer page progression
+7. Step 16 — Full shopping workflow
+8. Step 17 — Logging and debug trace
+9. Step 18 — Retry and fallback logic
+10. Step 19 — Domain-specific tool layer
+11. Step 20 — Demo polish
+
+---
+
+# Short Summary
+
+## What the current step (Step 9) does
+Step 9 lets the agent inspect the current form and understand what input fields exist.
+
+## Why it matters
+This is essential for reliable input filling and future checkout automation.
+
+## What comes next
+The next major milestone should be:
+
+**Step 10 — Guided checkout state**
+
+because that is what allows the agent to remember:
+- what the user wants
+- what data has already been provided
+- what is still missing
+- where it is in the flow
+
+---
+
+# Final Goal
+
+The final demo should look like this:
+
+1. user types:
+   - “I want to buy an iPhone 16 Pro black 256GB with eSIM”
+2. agent opens the internal/staging shopping site
+3. agent selects product options
+4. agent goes to checkout
+5. agent inspects form
+6. agent asks the user for missing details
+7. agent fills those details
+8. agent continues to the review page
+9. agent stops before final submission
+
+That is the target end state of this build roadmap.

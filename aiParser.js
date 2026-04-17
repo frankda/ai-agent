@@ -2,7 +2,12 @@
  * aiParser.js
  * -----------
  * AI SDK 6 structured command parser.
- * No commands.js needed.
+ *
+ * Uses:
+ * - generateText(...)
+ * - output: Output.object({ schema })
+ *
+ * No commands.js required.
  */
 
 const { generateText, Output } = require("ai");
@@ -18,6 +23,7 @@ const commandSchema = z.object({
     "inspect_page",
     "list_buttons",
     "list_links",
+    "list_inputs",
     "click_text",
     "confirm_click_text",
     "fill_input",
@@ -35,8 +41,12 @@ const localProvider = createOpenAICompatible({
   supportsStructuredOutputs: true,
 });
 
+function normalizeText(text) {
+  return (text || "").replace(/\s+/g, " ").trim();
+}
+
 function parseSimpleCommands(message) {
-  const trimmed = message.trim();
+  const trimmed = normalizeText(message);
   const lower = trimmed.toLowerCase();
 
   if (lower === "exit") return { type: "exit" };
@@ -55,21 +65,30 @@ function parseSimpleCommands(message) {
   if (lower === "list buttons") return { type: "list_buttons" };
   if (lower === "list links") return { type: "list_links" };
 
+  if (
+    lower === "list inputs" ||
+    lower === "inspect form" ||
+    lower === "list fields" ||
+    lower === "show inputs"
+  ) {
+    return { type: "list_inputs" };
+  }
+
   if (lower.startsWith("click ")) {
-    const target = trimmed.slice(6).trim();
+    const target = normalizeText(trimmed.slice(6));
     return target ? { type: "click_text", target } : { type: "unknown" };
   }
 
   if (lower.startsWith("confirm click ")) {
-    const target = trimmed.slice("confirm click ".length).trim();
+    const target = normalizeText(trimmed.slice("confirm click ".length));
     return target ? { type: "confirm_click_text", target } : { type: "unknown" };
   }
 
-  // type <value> into <field>
+  // Pattern: type <value> into <field>
   const typeIntoMatch = trimmed.match(/^type\s+(.+)\s+into\s+(.+)$/i);
   if (typeIntoMatch) {
-    const value = typeIntoMatch[1].trim().replace(/^"|"$/g, "");
-    const target = typeIntoMatch[2].trim().replace(/^"|"$/g, "");
+    const value = normalizeText(typeIntoMatch[1].replace(/^"|"$/g, ""));
+    const target = normalizeText(typeIntoMatch[2].replace(/^"|"$/g, ""));
 
     if (value && target) {
       return {
@@ -78,10 +97,12 @@ function parseSimpleCommands(message) {
         value,
       };
     }
+
+    return { type: "unknown" };
   }
 
   if (lower.startsWith("open ")) {
-    const target = trimmed.slice(5).trim();
+    const target = normalizeText(trimmed.slice(5));
     return target ? { type: "open_website", target } : { type: "unknown" };
   }
 
@@ -101,6 +122,7 @@ function normalizeCommand(obj) {
     "inspect_page",
     "list_buttons",
     "list_links",
+    "list_inputs",
     "click_text",
     "confirm_click_text",
     "fill_input",
@@ -117,13 +139,13 @@ function normalizeCommand(obj) {
     obj.type === "click_text" ||
     obj.type === "confirm_click_text"
   ) {
-    if (!obj.target || typeof obj.target !== "string" || !obj.target.trim()) {
+    if (!obj.target || typeof obj.target !== "string" || !normalizeText(obj.target)) {
       return { type: "unknown" };
     }
 
     return {
       type: obj.type,
-      target: obj.target.trim(),
+      target: normalizeText(obj.target),
     };
   }
 
@@ -131,18 +153,18 @@ function normalizeCommand(obj) {
     if (
       !obj.target ||
       typeof obj.target !== "string" ||
-      !obj.target.trim() ||
+      !normalizeText(obj.target) ||
       !obj.value ||
       typeof obj.value !== "string" ||
-      !obj.value.trim()
+      !normalizeText(obj.value)
     ) {
       return { type: "unknown" };
     }
 
     return {
       type: "fill_input",
-      target: obj.target.trim(),
-      value: obj.value.trim(),
+      target: normalizeText(obj.target),
+      value: normalizeText(obj.value),
     };
   }
 
@@ -162,60 +184,69 @@ async function parseCommandWithAI(message) {
       output: Output.object({
         schema: commandSchema,
         name: "browser_command",
-        description: "A CLI browser command for a simple assistant",
+        description: "A CLI browser command for a simple browser assistant",
       }),
       system: `
-You are a command parser for a tiny CLI browser assistant.
+You are a command parser for a CLI browser assistant.
 
-Map the user's message to exactly one command object.
+Your job:
+- Convert the user's message into exactly one structured command object.
+- Do not explain.
+- Do not add extra narrative.
+- Return only the structured command matching the schema.
 
 Supported commands:
 
 1. open_website
-- If the user wants to open, visit, go to, launch, or navigate to a website
+- Use when the user wants to open, visit, go to, launch, or navigate to a website
 - Put the site/domain into "target"
 
 2. get_title
-- If the user asks for the current page title
+- Use when the user asks for the current page title
 
 3. get_url
-- If the user asks for the current page URL
+- Use when the user asks for the current page URL
 
 4. close_browser
-- If the user wants to close the browser
+- Use when the user wants to close the browser
 
 5. inspect_page
-- If the user asks what page this is
-- If the user asks for page info or to inspect the page
+- Use when the user asks what page this is
+- Use when the user asks for page info or to inspect the current page
 
 6. list_buttons
-- If the user asks to list visible buttons
+- Use when the user asks to list visible buttons
 
 7. list_links
-- If the user asks to list visible links
+- Use when the user asks to list visible links
 
-8. click_text
-- If the user wants to click a visible button or link
+8. list_inputs
+- Use when the user asks to list inputs, fields, form fields, or inspect the form
+
+9. click_text
+- Use when the user wants to click a visible button or link
 - Put the visible label into "target"
+- Example: "click Gmail"
 
-9. confirm_click_text
-- If the user explicitly confirms a previously requested risky click
+10. confirm_click_text
+- Use when the user explicitly confirms a previously requested click
 - Put the same visible label into "target"
+- Example: "confirm click Checkout"
 
-10. fill_input
-- If the user wants to type text into an input field
+11. fill_input
+- Use when the user wants to type text into an input field
 - Put the field name into "target"
-- Put the text value into "value"
+- Put the text to enter into "value"
 - Examples:
   - "type Frank Da into Name"
   - "type 0400111222 into Phone"
   - "type iPhone into Search"
 
-11. exit
-- If the user wants to quit the CLI
+12. exit
+- Use when the user wants to quit the CLI
 
-12. unknown
-- If none of the above apply
+13. unknown
+- Use when none of the above apply
 
 Rules:
 - Only include "target" for:
@@ -224,15 +255,16 @@ Rules:
   - confirm_click_text
   - fill_input
 - Only include "value" for fill_input
-- Do not invent sites
+- Do not invent websites
 - Do not invent button labels
-- Do not invent field names
-- If unsure, return unknown
+- Do not invent input field names
+- If unsure, return type="unknown"
       `.trim(),
       prompt: message,
     });
 
     console.log("DEBUG structured output:", result.output);
+
     return normalizeCommand(result.output);
   } catch (err) {
     console.error("AI parser error:", err.message);
@@ -243,3 +275,4 @@ Rules:
 module.exports = {
   parseCommandWithAI,
 };
+``
