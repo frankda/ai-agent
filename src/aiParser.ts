@@ -1,38 +1,6 @@
-/**
- * aiParser.js
- * -----------
- * AI SDK 6 structured command parser.
- *
- * Uses:
- * - generateText(...)
- * - output: Output.object({ schema })
- *
- * No commands.js required.
- */
-
-const { generateText, Output } = require("ai");
-const { createOpenAICompatible } = require("@ai-sdk/openai-compatible");
-const { z } = require("zod");
-
-const commandSchema = z.object({
-  type: z.enum([
-    "open_website",
-    "get_title",
-    "get_url",
-    "close_browser",
-    "inspect_page",
-    "list_buttons",
-    "list_links",
-    "list_inputs",
-    "click_text",
-    "confirm_click_text",
-    "fill_input",
-    "exit",
-    "unknown",
-  ]),
-  target: z.string().optional(),
-  value: z.string().optional(),
-});
+import { Output, generateText } from "ai";
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import { commandSchema, type Command } from "./types/commands.js";
 
 const localProvider = createOpenAICompatible({
   name: "local",
@@ -41,11 +9,11 @@ const localProvider = createOpenAICompatible({
   supportsStructuredOutputs: true,
 });
 
-function normalizeText(text) {
+function normalizeText(text: string | null | undefined): string {
   return (text || "").replace(/\s+/g, " ").trim();
 }
 
-function parseSimpleCommands(message) {
+function parseSimpleCommands(message: string): Command | null {
   const trimmed = normalizeText(message);
   const lower = trimmed.toLowerCase();
 
@@ -54,11 +22,7 @@ function parseSimpleCommands(message) {
   if (lower === "url") return { type: "get_url" };
   if (lower === "close browser") return { type: "close_browser" };
 
-  if (
-    lower === "inspect page" ||
-    lower === "what page is this" ||
-    lower === "page info"
-  ) {
+  if (lower === "inspect page" || lower === "what page is this" || lower === "page info") {
     return { type: "inspect_page" };
   }
 
@@ -84,11 +48,10 @@ function parseSimpleCommands(message) {
     return target ? { type: "confirm_click_text", target } : { type: "unknown" };
   }
 
-  // Pattern: type <value> into <field>
   const typeIntoMatch = trimmed.match(/^type\s+(.+)\s+into\s+(.+)$/i);
   if (typeIntoMatch) {
-    const value = normalizeText(typeIntoMatch[1].replace(/^"|"$/g, ""));
-    const target = normalizeText(typeIntoMatch[2].replace(/^"|"$/g, ""));
+    const value = normalizeText(typeIntoMatch[1]?.replace(/^"|"$/g, ""));
+    const target = normalizeText(typeIntoMatch[2]?.replace(/^"|"$/g, ""));
 
     if (value && target) {
       return {
@@ -109,13 +72,42 @@ function parseSimpleCommands(message) {
   return null;
 }
 
-function normalizeCommand(obj) {
+function normalizeCommand(obj: unknown): Command {
   if (!obj || typeof obj !== "object") {
     return { type: "unknown" };
   }
 
-  const allowedTypes = new Set([
-    "open_website",
+  const record = obj as { type?: unknown; target?: unknown; value?: unknown };
+
+  if (record.type === "open_website" || record.type === "click_text" || record.type === "confirm_click_text") {
+    if (typeof record.target !== "string" || !normalizeText(record.target)) {
+      return { type: "unknown" };
+    }
+
+    return {
+      type: record.type,
+      target: normalizeText(record.target),
+    };
+  }
+
+  if (record.type === "fill_input") {
+    if (
+      typeof record.target !== "string" ||
+      !normalizeText(record.target) ||
+      typeof record.value !== "string" ||
+      !normalizeText(record.value)
+    ) {
+      return { type: "unknown" };
+    }
+
+    return {
+      type: "fill_input",
+      target: normalizeText(record.target),
+      value: normalizeText(record.value),
+    };
+  }
+
+  const simpleTypes = new Set([
     "get_title",
     "get_url",
     "close_browser",
@@ -123,63 +115,26 @@ function normalizeCommand(obj) {
     "list_buttons",
     "list_links",
     "list_inputs",
-    "click_text",
-    "confirm_click_text",
-    "fill_input",
     "exit",
     "unknown",
   ]);
 
-  if (!obj.type || !allowedTypes.has(obj.type)) {
-    return { type: "unknown" };
+  if (typeof record.type === "string" && simpleTypes.has(record.type)) {
+    return { type: record.type as Command["type"] } as Command;
   }
 
-  if (
-    obj.type === "open_website" ||
-    obj.type === "click_text" ||
-    obj.type === "confirm_click_text"
-  ) {
-    if (!obj.target || typeof obj.target !== "string" || !normalizeText(obj.target)) {
-      return { type: "unknown" };
-    }
-
-    return {
-      type: obj.type,
-      target: normalizeText(obj.target),
-    };
-  }
-
-  if (obj.type === "fill_input") {
-    if (
-      !obj.target ||
-      typeof obj.target !== "string" ||
-      !normalizeText(obj.target) ||
-      !obj.value ||
-      typeof obj.value !== "string" ||
-      !normalizeText(obj.value)
-    ) {
-      return { type: "unknown" };
-    }
-
-    return {
-      type: "fill_input",
-      target: normalizeText(obj.target),
-      value: normalizeText(obj.value),
-    };
-  }
-
-  return { type: obj.type };
+  return { type: "unknown" };
 }
 
-async function parseCommandWithAI(message) {
+export async function parseCommandWithAI(message: string): Promise<Command> {
   const simple = parseSimpleCommands(message);
-  if (simple) return simple;
+  if (simple) {
+    return simple;
+  }
 
   try {
     const result = await generateText({
-      model: localProvider.chatModel(
-        process.env.LOCAL_LLM_MODEL || "local-model"
-      ),
+      model: localProvider.chatModel(process.env.LOCAL_LLM_MODEL || "local-model"),
       temperature: 0,
       output: Output.object({
         schema: commandSchema,
@@ -266,13 +221,9 @@ Rules:
     console.log("DEBUG structured output:", result.output);
 
     return normalizeCommand(result.output);
-  } catch (err) {
-    console.error("AI parser error:", err.message);
+  } catch (error: unknown) {
+    const messageText = error instanceof Error ? error.message : String(error);
+    console.error("AI parser error:", messageText);
     return { type: "unknown" };
   }
 }
-
-module.exports = {
-  parseCommandWithAI,
-};
-``

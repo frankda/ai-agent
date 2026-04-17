@@ -1,5 +1,20 @@
 # AI Shopping Agent Demo — Implementation Plan
 
+## Run Commands (TypeScript)
+
+Use these commands for local development and execution:
+
+1. Install dependencies:
+	- `pnpm install`
+2. Type-check only:
+	- `pnpm type-check`
+3. Build TypeScript to `dist/`:
+	- `pnpm build`
+4. Run compiled CLI:
+	- `pnpm start`
+5. Dev shortcut (build + start):
+	- `pnpm dev`
+
 ## 1. Project Summary
 
 Build a demo AI agent in Node.js that uses a local LLM to understand a user’s shopping intent from chat, then uses browser automation to operate an internal or staging shopping website.

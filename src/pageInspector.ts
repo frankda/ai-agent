@@ -1,17 +1,8 @@
-/**
- * Step 6: page inspector
- * ----------------------
- * Reads the current Playwright page and returns a lightweight summary.
- *
- * For now it extracts:
- * - title
- * - url
- * - visible buttons
- * - visible links
- */
+import type { Locator, Page } from "playwright";
+import type { PageInfo } from "./types/results.js";
 
-async function getVisibleTexts(locator, limit = 20) {
-  const results = [];
+async function getVisibleTexts(locator: Locator, limit = 20): Promise<string[]> {
+  const results: string[] = [];
   const count = await locator.count();
 
   for (let i = 0; i < Math.min(count, limit); i++) {
@@ -19,24 +10,27 @@ async function getVisibleTexts(locator, limit = 20) {
       const item = locator.nth(i);
       const visible = await item.isVisible().catch(() => false);
 
-      if (!visible) continue;
+      if (!visible) {
+        continue;
+      }
 
       let text = await item.innerText().catch(() => "");
       text = text.replace(/\s+/g, " ").trim();
 
-      if (!text) continue;
-      if (results.includes(text)) continue;
+      if (!text || results.includes(text)) {
+        continue;
+      }
 
       results.push(text);
     } catch {
-      // ignore individual locator failures
+      // Ignore individual locator failures.
     }
   }
 
   return results;
 }
 
-async function inspectPage(page) {
+export async function inspectPage(page: Page | undefined): Promise<PageInfo> {
   if (!page) {
     return {
       title: "No page open",
@@ -62,7 +56,3 @@ async function inspectPage(page) {
     links,
   };
 }
-
-module.exports = {
-  inspectPage,
-};

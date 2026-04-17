@@ -1,5 +1,20 @@
 # Browser Agent Demo — Step-by-Step Build Plan
 
+## Run Commands (TypeScript)
+
+Use these commands for all local development and execution:
+
+1. Install dependencies:
+   - `pnpm install`
+2. Type-check only:
+   - `pnpm type-check`
+3. Build TypeScript to `dist/`:
+   - `pnpm build`
+4. Run compiled CLI:
+   - `pnpm start`
+5. Dev shortcut (build + start):
+   - `pnpm dev`
+
 ## Project Goal
 
 Build a simple browser automation agent in Node.js that:
@@ -21,32 +36,32 @@ This project is being built incrementally, fail-by-fail, with each step adding o
 The current architecture is:
 
 User input  
-→ `index.js`  
-→ `aiParser.js`  
-→ `executor.js`  
+→ `src/index.ts`  
+→ `src/aiParser.ts`  
+→ `src/executor.ts`  
 → browser/page/form action modules
 
 Core flow:
 
-- `index.js` handles terminal input/output
-- `aiParser.js` converts user text into a structured command object
-- `executor.js` executes the command
+- `src/index.ts` handles terminal input/output
+- `src/aiParser.ts` converts user text into a structured command object
+- `src/executor.ts` executes the command
 - browser modules perform page actions
 
 ---
 
 # Current File Roles
 
-## `index.js`
+## `src/index.ts`
 Owns the CLI chat loop.
 
 Responsibilities:
 - accept terminal input
-- send input to `aiParser.js`
-- pass parsed command to `executor.js`
+- send input to `src/aiParser.ts`
+- pass parsed command to `src/executor.ts`
 - print results to terminal
 
-## `aiParser.js`
+## `src/aiParser.ts`
 Converts natural language into structured commands.
 
 Examples:
@@ -55,13 +70,13 @@ Examples:
 - `click Gmail`
 - `type Frank Da into Name`
 
-## `executor.js`
+## `src/executor.ts`
 Routes parsed commands to the correct browser or inspection module.
 
-## `browser.js`
+## `src/browser.ts`
 Owns Playwright browser lifecycle and basic navigation.
 
-## `pageInspector.js`
+## `src/pageInspector.ts`
 Inspects the current page.
 
 It returns:
@@ -70,17 +85,17 @@ It returns:
 - visible buttons
 - visible links
 
-## `clickActions.js`
+## `src/clickActions.ts`
 Clicks visible buttons or links by exact visible text.
 
-## `inputActions.js`
+## `src/inputActions.ts`
 Fills safe text-like fields using:
 - labels
 - placeholders
 - accessible textbox names
 - generic DOM scanning fallback
 
-## `formInspector.js`
+## `src/formInspector.ts`
 Inspects fillable fields on the current page and returns:
 - labels
 - placeholders
@@ -116,12 +131,12 @@ This is the base interaction loop for the entire agent.
 Separate browser automation from the chat logic.
 
 ### What this step does
-Moves Playwright browser startup and website opening into `browser.js`.
+Moves Playwright browser startup and website opening into `src/browser.ts`.
 
 ### Result
 The project becomes modular:
-- chat logic stays in `index.js`
-- browser control lives in `browser.js`
+- chat logic stays in `src/index.ts`
+- browser control lives in `src/browser.ts`
 
 ### Why it matters
 This separation is required before adding AI and more complex actions.
@@ -157,10 +172,10 @@ This is the bridge toward AI command parsing.
 Separate command execution from chat and parsing.
 
 ### What this step does
-Introduces `executor.js`.
+Introduces `src/executor.ts`.
 
 ### Result
-`executor.js` becomes the module that decides:
+`src/executor.ts` becomes the module that decides:
 - which action to run
 - which browser method to call
 
@@ -196,7 +211,7 @@ This is the first real “agent-like” capability.
 Make the agent able to observe the current page.
 
 ### What this step does
-Introduces `pageInspector.js`.
+Introduces `src/pageInspector.ts`.
 
 It extracts:
 - page title
@@ -218,7 +233,7 @@ An agent should not just act — it must also observe.
 Allow the agent to click visible buttons or links by text.
 
 ### What this step does
-Introduces `clickActions.js`.
+Introduces `src/clickActions.ts`.
 
 Example actions:
 - `click Gmail`
@@ -238,7 +253,7 @@ This is the first direct browser interaction beyond opening websites.
 Allow the agent to type into text-like fields.
 
 ### What this step does
-Introduces `inputActions.js`.
+Introduces `src/inputActions.ts`.
 
 It supports:
 - label matching
@@ -265,7 +280,7 @@ This is a key requirement for checkout and shopping workflows.
 Allow the agent to discover available inputs before filling them.
 
 ### What this step does
-Introduces `formInspector.js`.
+Introduces `src/formInspector.ts`.
 
 It scans the current page for fillable fields and returns:
 - labels
@@ -358,9 +373,9 @@ Without state, the agent only reacts turn-by-turn.
 With state, it becomes a real assistant that remembers context.
 
 ### Likely new file
-- `sessionState.js`
+- `src/sessionState.ts`
 or
-- `conversationState.js`
+- `src/conversationState.ts`
 
 ---
 
@@ -380,9 +395,9 @@ Move from generic clicks to shopping-specific actions like:
 This makes the demo more stable and much easier to manage than raw clicking.
 
 ### Likely new file
-- `shoppingActions.js`
+- `src/shoppingActions.ts`
 or
-- `productActions.js`
+- `src/productActions.ts`
 
 ---
 

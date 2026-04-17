@@ -1,13 +1,13 @@
-const readline = require("readline");
-const { parseCommandWithAI } = require("./aiParser");
-const { executeCommand } = require("./executor");
+import readline from "node:readline";
+import { parseCommandWithAI } from "./aiParser.js";
+import { executeCommand } from "./executor.js";
 
 const rl = readline.createInterface({
   input: process.stdin,
   output: process.stdout,
 });
 
-async function handleUserMessage(message) {
+async function handleUserMessage(message: string): Promise<void> {
   const command = await parseCommandWithAI(message);
   console.log("DEBUG command:", command);
 
@@ -19,12 +19,13 @@ async function handleUserMessage(message) {
   }
 }
 
-function prompt() {
-  rl.question("\nYou> ", async (answer) => {
+function prompt(): void {
+  rl.question("\nYou> ", async (answer: string) => {
     try {
       await handleUserMessage(answer);
-    } catch (err) {
-      console.error("❌ Error:", err.message);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("❌ Error:", message);
     }
 
     prompt();

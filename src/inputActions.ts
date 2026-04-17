@@ -1,72 +1,29 @@
-/**
- * inputActions.js
- * ---------------
- * Fill text-like fields safely and robustly.
- *
- * Supported matching strategies:
- * 1. getByLabel(field)
- * 2. getByPlaceholder(field)
- * 3. getByRole("textbox", { name: field })
- * 4. generic DOM scan using:
- *    - name
- *    - id
- *    - aria-label
- *    - placeholder
- *    - autocomplete
- *    - associated <label for="...">
- * 5. contenteditable elements
- *
- * Safety:
- * - blocks obvious sensitive payment-related fields
- * - does not submit the form
- */
+import type { Locator, Page } from "playwright";
+import { NON_TEXT_INPUT_TYPES, SENSITIVE_FIELD_PATTERNS } from "./utils/fieldConstants.js";
+import type { FillResult } from "./types/results.js";
 
-const NON_TEXT_INPUT_TYPES = new Set([
-  "hidden",
-  "checkbox",
-  "radio",
-  "submit",
-  "button",
-  "file",
-  "image",
-  "range",
-  "color",
-  "reset",
-]);
-
-const SENSITIVE_FIELD_PATTERNS = [
-  /card number/i,
-  /credit card/i,
-  /debit card/i,
-  /\bcard\b/i,
-  /\bcvv\b/i,
-  /\bcvc\b/i,
-  /security code/i,
-  /expiry/i,
-  /expiration/i,
-  /exp date/i,
-  /mm\/yy/i,
-  /mm-yyyy/i,
-  /iban/i,
-  /swift/i,
-];
-
-function normalizeText(text) {
+function normalizeText(text: string | null | undefined): string {
   return (text || "").replace(/\s+/g, " ").trim();
 }
 
-function containsLooseMatch(haystack, needle) {
+function containsLooseMatch(haystack: string, needle: string): boolean {
   return normalizeText(haystack).toLowerCase().includes(normalizeText(needle).toLowerCase());
 }
 
-function isSensitiveField(fieldName) {
+function escapeRegExp(input: string): string {
+  return input.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+export function isSensitiveField(fieldName: string): boolean {
   return SENSITIVE_FIELD_PATTERNS.some((pattern) => pattern.test(fieldName || ""));
 }
 
-async function safelyFillElement(element, value) {
+async function safelyFillElement(element: Locator, value: string): Promise<boolean> {
   try {
     const visible = await element.isVisible().catch(() => false);
-    if (!visible) return false;
+    if (!visible) {
+      return false;
+    }
 
     const editable = await element.isEditable().catch(() => false);
 
@@ -76,41 +33,47 @@ async function safelyFillElement(element, value) {
       return true;
     }
 
-    // fallback for contenteditable or non-standard editable elements
-    await element.click().catch(() => {});
-    await element.evaluate((el) => {
-      if (el.isContentEditable) {
-        el.textContent = "";
-      }
-    }).catch(() => {});
+    await element.click().catch(() => undefined);
+    await element
+      .evaluate((el) => {
+        if ((el as HTMLElement).isContentEditable) {
+          el.textContent = "";
+        }
+      })
+      .catch(() => undefined);
 
-    await element.type(value).catch(() => {});
-
+    await element.type(value).catch(() => undefined);
     return true;
   } catch {
     return false;
   }
 }
 
-async function tryFillLocator(locator, value) {
+async function tryFillLocator(locator: Locator, value: string): Promise<boolean> {
   const count = await locator.count().catch(() => 0);
 
   for (let i = 0; i < count; i++) {
     const item = locator.nth(i);
     const ok = await safelyFillElement(item, value);
-    if (ok) return true;
+    if (ok) {
+      return true;
+    }
   }
 
   return false;
 }
 
-async function getAssociatedLabelText(page, idValue) {
-  if (!idValue) return "";
+async function getAssociatedLabelText(page: Page, idValue: string): Promise<string> {
+  if (!idValue) {
+    return "";
+  }
 
   try {
     const label = page.locator(`label[for="${idValue}"]`).first();
     const exists = await label.count().catch(() => 0);
-    if (!exists) return "";
+    if (!exists) {
+      return "";
+    }
 
     const text = await label.innerText().catch(() => "");
     return normalizeText(text);
@@ -119,8 +82,16 @@ async function getAssociatedLabelText(page, idValue) {
   }
 }
 
-async function scanGenericInputs(page, field, value) {
-  const locator = page.locator("input, textarea, [contenteditable='true'], [contenteditable=''], [contenteditable='plaintext-only']");
+interface GenericScanResult {
+  matched: boolean;
+  strategy?: string;
+  matchedField?: string;
+}
+
+async function scanGenericInputs(page: Page, field: string, value: string): Promise<GenericScanResult> {
+  const locator = page.locator(
+    "input, textarea, [contenteditable='true'], [contenteditable=''], [contenteditable='plaintext-only']"
+  );
   const count = await locator.count().catch(() => 0);
 
   for (let i = 0; i < count; i++) {
@@ -128,9 +99,12 @@ async function scanGenericInputs(page, field, value) {
 
     try {
       const visible = await item.isVisible().catch(() => false);
-      if (!visible) continue;
+      if (!visible) {
+        continue;
+      }
 
-      const tagName = (await item.evaluate((el) => el.tagName.toLowerCase()).catch(() => "")) || "";
+      const tagName =
+        (await item.evaluate((el) => el.tagName.toLowerCase()).catch(() => "")) || "";
       const typeAttr = ((await item.getAttribute("type").catch(() => "")) || "").toLowerCase();
 
       if (tagName === "input" && NON_TEXT_INPUT_TYPES.has(typeAttr)) {
@@ -139,9 +113,11 @@ async function scanGenericInputs(page, field, value) {
 
       const editable =
         (await item.isEditable().catch(() => false)) ||
-        (await item.evaluate((el) => !!el.isContentEditable).catch(() => false));
+        (await item.evaluate((el) => (el as HTMLElement).isContentEditable).catch(() => false));
 
-      if (!editable) continue;
+      if (!editable) {
+        continue;
+      }
 
       const nameAttr = (await item.getAttribute("name").catch(() => "")) || "";
       const idAttr = (await item.getAttribute("id").catch(() => "")) || "";
@@ -160,26 +136,23 @@ async function scanGenericInputs(page, field, value) {
       ];
 
       const matched = candidates.some((candidate) => containsLooseMatch(candidate, field));
-
-      if (!matched) continue;
+      if (!matched) {
+        continue;
+      }
 
       const ok = await safelyFillElement(item, value);
-      if (ok) {
-        return {
-          matched: true,
-          strategy: "generic_dom_scan",
-          matchedField:
-            associatedLabel ||
-            ariaLabel ||
-            placeholder ||
-            nameAttr ||
-            idAttr ||
-            autocomplete ||
-            field,
-        };
+      if (!ok) {
+        continue;
       }
+
+      return {
+        matched: true,
+        strategy: "generic_dom_scan",
+        matchedField:
+          associatedLabel || ariaLabel || placeholder || nameAttr || idAttr || autocomplete || field,
+      };
     } catch {
-      // ignore candidate failure
+      // Ignore candidate failure.
     }
   }
 
@@ -188,7 +161,11 @@ async function scanGenericInputs(page, field, value) {
   };
 }
 
-async function fillInputField(page, rawField, rawValue) {
+export async function fillInputField(
+  page: Page | undefined,
+  rawField: string,
+  rawValue: string
+): Promise<FillResult> {
   if (!page) {
     return {
       success: false,
@@ -227,7 +204,8 @@ async function fillInputField(page, rawField, rawValue) {
     };
   }
 
-  // 1) Exact label
+  const fieldRegex = new RegExp(escapeRegExp(field), "i");
+
   try {
     const byLabelExact = page.getByLabel(field, { exact: true });
     if (await tryFillLocator(byLabelExact, value)) {
@@ -241,11 +219,12 @@ async function fillInputField(page, rawField, rawValue) {
         },
       };
     }
-  } catch {}
+  } catch {
+    // Fall through.
+  }
 
-  // 2) Loose label
   try {
-    const byLabelLoose = page.getByLabel(new RegExp(field.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"));
+    const byLabelLoose = page.getByLabel(fieldRegex);
     if (await tryFillLocator(byLabelLoose, value)) {
       return {
         success: true,
@@ -257,9 +236,10 @@ async function fillInputField(page, rawField, rawValue) {
         },
       };
     }
-  } catch {}
+  } catch {
+    // Fall through.
+  }
 
-  // 3) Exact placeholder
   try {
     const byPlaceholderExact = page.getByPlaceholder(field, { exact: true });
     if (await tryFillLocator(byPlaceholderExact, value)) {
@@ -273,13 +253,12 @@ async function fillInputField(page, rawField, rawValue) {
         },
       };
     }
-  } catch {}
+  } catch {
+    // Fall through.
+  }
 
-  // 4) Loose placeholder
   try {
-    const byPlaceholderLoose = page.getByPlaceholder(
-      new RegExp(field.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i")
-    );
+    const byPlaceholderLoose = page.getByPlaceholder(fieldRegex);
     if (await tryFillLocator(byPlaceholderLoose, value)) {
       return {
         success: true,
@@ -291,9 +270,10 @@ async function fillInputField(page, rawField, rawValue) {
         },
       };
     }
-  } catch {}
+  } catch {
+    // Fall through.
+  }
 
-  // 5) Textbox exact accessible name
   try {
     const byTextboxExact = page.getByRole("textbox", { name: field, exact: true });
     if (await tryFillLocator(byTextboxExact, value)) {
@@ -307,13 +287,12 @@ async function fillInputField(page, rawField, rawValue) {
         },
       };
     }
-  } catch {}
+  } catch {
+    // Fall through.
+  }
 
-  // 6) Textbox loose accessible name
   try {
-    const byTextboxLoose = page.getByRole("textbox", {
-      name: new RegExp(field.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"),
-    });
+    const byTextboxLoose = page.getByRole("textbox", { name: fieldRegex });
     if (await tryFillLocator(byTextboxLoose, value)) {
       return {
         success: true,
@@ -325,9 +304,10 @@ async function fillInputField(page, rawField, rawValue) {
         },
       };
     }
-  } catch {}
+  } catch {
+    // Fall through.
+  }
 
-  // 7) Generic DOM scan fallback
   const genericResult = await scanGenericInputs(page, field, value);
   if (genericResult.matched) {
     return {
@@ -351,8 +331,3 @@ async function fillInputField(page, rawField, rawValue) {
     },
   };
 }
-
-module.exports = {
-  fillInputField,
-  isSensitiveField,
-};

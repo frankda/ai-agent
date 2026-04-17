@@ -1,70 +1,34 @@
-/**
- * formInspector.js
- * ----------------
- * Inspects fillable form fields on the current page.
- *
- * Extracts:
- * - label text
- * - placeholder
- * - name / id
- * - aria-label
- * - input type
- * - editable status
- * - sensitivity flag
- *
- * This is a READ-ONLY inspector (no typing, no clicking).
- */
+import type { Page } from "playwright";
+import type { FormField } from "./types/forms.js";
+import type { FormInspectionResult } from "./types/results.js";
+import { NON_TEXT_INPUT_TYPES, SENSITIVE_FIELD_PATTERNS } from "./utils/fieldConstants.js";
 
-const NON_TEXT_INPUT_TYPES = new Set([
-  "hidden",
-  "checkbox",
-  "radio",
-  "submit",
-  "button",
-  "file",
-  "image",
-  "range",
-  "color",
-  "reset",
-]);
-
-const SENSITIVE_FIELD_PATTERNS = [
-  /card number/i,
-  /credit card/i,
-  /debit card/i,
-  /\bcard\b/i,
-  /\bcvv\b/i,
-  /\bcvc\b/i,
-  /security code/i,
-  /expiry/i,
-  /expiration/i,
-  /exp date/i,
-  /mm\/yy/i,
-  /iban/i,
-  /swift/i,
-];
-
-function normalizeText(text) {
+function normalizeText(text: string | null | undefined): string {
   return (text || "").replace(/\s+/g, " ").trim();
 }
 
-function isSensitiveField(text) {
-  return SENSITIVE_FIELD_PATTERNS.some((p) => p.test(text || ""));
+function isSensitiveField(text: string): boolean {
+  return SENSITIVE_FIELD_PATTERNS.some((pattern) => pattern.test(text || ""));
 }
 
-async function getAssociatedLabel(page, id) {
-  if (!id) return "";
+async function getAssociatedLabel(page: Page, id: string): Promise<string> {
+  if (!id) {
+    return "";
+  }
 
   try {
     const label = page.locator(`label[for="${id}"]`).first();
-    if ((await label.count().catch(() => 0)) === 0) return "";
+    if ((await label.count().catch(() => 0)) === 0) {
+      return "";
+    }
+
     return normalizeText(await label.innerText());
   } catch {
     return "";
   }
 }
 
-async function inspectFormFields(page) {
+export async function inspectFormFields(page: Page | undefined): Promise<FormInspectionResult> {
   if (!page) {
     return {
       success: false,
@@ -78,25 +42,32 @@ async function inspectFormFields(page) {
   );
 
   const count = await locator.count().catch(() => 0);
-  const fields = [];
+  const fields: FormField[] = [];
 
   for (let i = 0; i < count; i++) {
     const el = locator.nth(i);
 
     try {
       const visible = await el.isVisible().catch(() => false);
-      if (!visible) continue;
+      if (!visible) {
+        continue;
+      }
 
-      const tagName = (await el.evaluate((n) => n.tagName.toLowerCase()).catch(() => "")) || "";
+      const tagName =
+        (await el.evaluate((node) => node.tagName.toLowerCase()).catch(() => "")) || "";
       const typeAttr = ((await el.getAttribute("type").catch(() => "")) || "").toLowerCase();
 
-      if (tagName === "input" && NON_TEXT_INPUT_TYPES.has(typeAttr)) continue;
+      if (tagName === "input" && NON_TEXT_INPUT_TYPES.has(typeAttr)) {
+        continue;
+      }
 
       const editable =
         (await el.isEditable().catch(() => false)) ||
-        (await el.evaluate((n) => !!n.isContentEditable).catch(() => false));
+        (await el.evaluate((node) => (node as HTMLElement).isContentEditable).catch(() => false));
 
-      if (!editable) continue;
+      if (!editable) {
+        continue;
+      }
 
       const name = normalizeText(await el.getAttribute("name").catch(() => ""));
       const id = normalizeText(await el.getAttribute("id").catch(() => ""));
@@ -105,15 +76,7 @@ async function inspectFormFields(page) {
       const autocomplete = normalizeText(await el.getAttribute("autocomplete").catch(() => ""));
       const label = await getAssociatedLabel(page, id);
 
-      const displayName =
-        label ||
-        ariaLabel ||
-        placeholder ||
-        name ||
-        id ||
-        autocomplete ||
-        "unknown";
-
+      const displayName = label || ariaLabel || placeholder || name || id || autocomplete || "unknown";
       const sensitive = isSensitiveField(
         `${displayName} ${placeholder} ${ariaLabel} ${name} ${autocomplete}`
       );
@@ -132,7 +95,7 @@ async function inspectFormFields(page) {
         sensitive,
       });
     } catch {
-      // skip broken elements
+      // Skip broken elements.
     }
   }
 
@@ -142,8 +105,3 @@ async function inspectFormFields(page) {
     fields,
   };
 }
-
-module.exports = {
-  inspectFormFields,
-};
-``

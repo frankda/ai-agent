@@ -1,13 +1,22 @@
-/**
- * Step 7: click actions
- * ---------------------
- * Click visible buttons or links by exact visible text.
- *
- * Important:
- * - no hard block list
- * - but risky clicks can require confirmation
- */
-async function tryClickLocator(locator, targetText) {
+import type { Locator, Page } from "playwright";
+import type { ClickResult } from "./types/results.js";
+
+const RISKY_LABEL_PATTERNS = [
+  /checkout/i,
+  /place order/i,
+  /submit order/i,
+  /confirm order/i,
+  /pay now/i,
+  /continue to payment/i,
+  /buy now/i,
+];
+
+interface ClickLocatorResult {
+  clicked: boolean;
+  matchedText?: string;
+}
+
+async function tryClickLocator(locator: Locator, targetText: string): Promise<ClickLocatorResult> {
   const count = await locator.count();
 
   for (let i = 0; i < count; i++) {
@@ -15,12 +24,16 @@ async function tryClickLocator(locator, targetText) {
 
     try {
       const visible = await item.isVisible().catch(() => false);
-      if (!visible) continue;
+      if (!visible) {
+        continue;
+      }
 
       let text = await item.innerText().catch(() => "");
       text = text.replace(/\s+/g, " ").trim();
 
-      if (!text) continue;
+      if (!text) {
+        continue;
+      }
 
       if (text.toLowerCase() === targetText.toLowerCase()) {
         await item.click();
@@ -30,14 +43,18 @@ async function tryClickLocator(locator, targetText) {
         };
       }
     } catch {
-      // ignore individual failures
+      // Ignore individual locator failures.
     }
   }
 
   return { clicked: false };
 }
 
-async function clickByVisibleText(page, rawTarget) {
+export function isRiskyLabel(label: string): boolean {
+  return RISKY_LABEL_PATTERNS.some((pattern) => pattern.test(label));
+}
+
+export async function clickByVisibleText(page: Page | undefined, rawTarget: string): Promise<ClickResult> {
   if (!page) {
     return {
       success: false,
@@ -57,20 +74,18 @@ async function clickByVisibleText(page, rawTarget) {
   const buttonLocator = page.locator("button, input[type='button'], input[type='submit']");
   const linkLocator = page.locator("a");
 
-  // try buttons first
   let result = await tryClickLocator(buttonLocator, target);
   if (result.clicked) {
-    await page.waitForLoadState("domcontentloaded").catch(() => {});
+    await page.waitForLoadState("domcontentloaded").catch(() => undefined);
     return {
       success: true,
       message: `✅ Clicked button: ${result.matchedText}`,
     };
   }
 
-  // then links
   result = await tryClickLocator(linkLocator, target);
   if (result.clicked) {
-    await page.waitForLoadState("domcontentloaded").catch(() => {});
+    await page.waitForLoadState("domcontentloaded").catch(() => undefined);
     return {
       success: true,
       message: `✅ Clicked link: ${result.matchedText}`,
@@ -82,7 +97,3 @@ async function clickByVisibleText(page, rawTarget) {
     message: `⚠️ Could not find a visible button or link with text: "${target}"`,
   };
 }
-
-module.exports = {
-  clickByVisibleText,
-};

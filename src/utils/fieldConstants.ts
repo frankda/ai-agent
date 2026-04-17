@@ -1,0 +1,29 @@
+export const NON_TEXT_INPUT_TYPES = new Set([
+  "hidden",
+  "checkbox",
+  "radio",
+  "submit",
+  "button",
+  "file",
+  "image",
+  "range",
+  "color",
+  "reset",
+]);
+
+export const SENSITIVE_FIELD_PATTERNS = [
+  /card number/i,
+  /credit card/i,
+  /debit card/i,
+  /\bcard\b/i,
+  /\bcvv\b/i,
+  /\bcvc\b/i,
+  /security code/i,
+  /expiry/i,
+  /expiration/i,
+  /exp date/i,
+  /mm\/yy/i,
+  /mm-yyyy/i,
+  /iban/i,
+  /swift/i,
+];

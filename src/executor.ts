@@ -1,40 +1,21 @@
-/**
- * executor.js
- * -----------
- * Executes structured commands returned by aiParser.js.
- *
- * Supported command types:
- * - open_website
- * - get_title
- * - get_url
- * - close_browser
- * - inspect_page
- * - list_buttons
- * - list_links
- * - list_inputs
- * - click_text
- * - confirm_click_text
- * - fill_input
- * - exit
- * - unknown
- */
-
-const {
-  openWebsite,
+import {
   closeBrowser,
   getCurrentTitle,
   getCurrentUrl,
   getExistingPage,
-} = require("./browser");
+  openWebsite,
+} from "./browser.js";
+import { clickByVisibleText, isRiskyLabel } from "./clickActions.js";
+import { inspectFormFields } from "./formInspector.js";
+import { fillInputField } from "./inputActions.js";
+import { inspectPage } from "./pageInspector.js";
+import type { Command } from "./types/commands.js";
+import type { FormField } from "./types/forms.js";
+import type { ExecutionResult } from "./types/results.js";
 
-const { inspectPage } = require("./pageInspector");
-const { clickByVisibleText, isRiskyLabel } = require("./clickActions");
-const { fillInputField } = require("./inputActions");
-const { inspectFormFields } = require("./formInspector");
+let pendingClickTarget: string | null = null;
 
-let pendingClickTarget = null;
-
-function formatList(title, items) {
+function formatList(title: string, items: string[]): string {
   if (!items || items.length === 0) {
     return `${title}\nNone`;
   }
@@ -42,7 +23,7 @@ function formatList(title, items) {
   return `${title}\n${items.map((item) => `- ${item}`).join("\n")}`;
 }
 
-function formatInputFields(fields) {
+function formatInputFields(fields: FormField[]): string {
   if (!fields || fields.length === 0) {
     return "🧾 Fillable fields:\nNone found";
   }
@@ -56,14 +37,7 @@ function formatInputFields(fields) {
   return `🧾 Fillable fields:\n${lines.join("\n")}`;
 }
 
-async function executeCommand(command) {
-  if (!command || typeof command !== "object" || !command.type) {
-    return {
-      success: false,
-      message: "⚠️ Invalid command received.",
-    };
-  }
-
+export async function executeCommand(command: Command): Promise<ExecutionResult> {
   switch (command.type) {
     case "exit": {
       await closeBrowser();
@@ -77,8 +51,7 @@ async function executeCommand(command) {
     }
 
     case "open_website": {
-      const target = (command.target || "").trim();
-
+      const target = command.target.trim();
       if (!target) {
         return {
           success: false,
@@ -87,7 +60,6 @@ async function executeCommand(command) {
       }
 
       const result = await openWebsite(target);
-
       return {
         success: true,
         message: `✅ Page opened: ${result.url}\n📄 Page title: ${result.title}`,
@@ -96,7 +68,6 @@ async function executeCommand(command) {
 
     case "get_title": {
       const title = await getCurrentTitle();
-
       return {
         success: true,
         message: `📄 Current page title: ${title}`,
@@ -105,7 +76,6 @@ async function executeCommand(command) {
 
     case "get_url": {
       const url = await getCurrentUrl();
-
       return {
         success: true,
         message: `🌐 Current page URL: ${url}`,
@@ -165,8 +135,7 @@ async function executeCommand(command) {
     }
 
     case "click_text": {
-      const target = (command.target || "").trim();
-
+      const target = command.target.trim();
       if (!target) {
         return {
           success: false,
@@ -186,14 +155,11 @@ async function executeCommand(command) {
       }
 
       const page = getExistingPage();
-      const result = await clickByVisibleText(page, target);
-
-      return result;
+      return clickByVisibleText(page, target);
     }
 
     case "confirm_click_text": {
-      const target = (command.target || "").trim();
-
+      const target = command.target.trim();
       if (!target) {
         return {
           success: false,
@@ -221,14 +187,13 @@ async function executeCommand(command) {
       const page = getExistingPage();
       const result = await clickByVisibleText(page, target);
       pendingClickTarget = null;
-
       return result;
     }
 
     case "fill_input": {
       const page = getExistingPage();
-      const field = (command.target || "").trim();
-      const value = (command.value || "").trim();
+      const field = command.target.trim();
+      const value = command.value.trim();
 
       if (!field) {
         return {
@@ -244,7 +209,7 @@ async function executeCommand(command) {
         };
       }
 
-      return await fillInputField(page, field, value);
+      return fillInputField(page, field, value);
     }
 
     case "close_browser": {
@@ -278,7 +243,3 @@ async function executeCommand(command) {
       };
   }
 }
-
-module.exports = {
-  executeCommand,
-};
