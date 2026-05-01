@@ -487,11 +487,25 @@ Crucially, the implementation handles **real-world e-commerce challenges**:
 - Verification of actual selection state before confirming to user
 - Automatic session state capture for checkout continuity
 
-This foundation makes Step 12 (Missing-Information Detection) and Step 14 (Checkout Auto-Fill Loop) much more tractable.
+This foundation makes Step 13 (Missing-Information Detection) and Step 15 (Checkout Auto-Fill Loop) much more tractable.
 
 ---
 
-## Step 12 — Missing-Information Detection
+## Step 12 — Intelligent Sales Assistant (Vodafone iPhone Flow)
+
+### Goal
+Add the next track for a conversational sales assistant that understands purchase intent and executes browser-based product selection flow.
+
+### What this step does
+Use the dedicated deep-dive implementation and verification plan in:
+- [doc/vodafone-sales-assistant-plan.md](doc/vodafone-sales-assistant-plan.md)
+
+### Why it matters
+This introduces the purchase-flow orchestrator track while keeping the main roadmap concise.
+
+---
+
+## Step 13 — Missing-Information Detection
 
 ### Goal
 Teach the agent to know what user data is missing.
@@ -516,7 +530,7 @@ This is the start of a guided checkout assistant.
 
 ---
 
-## Step 13 — Multi-Turn Conversation Memory
+## Step 14 — Multi-Turn Conversation Memory
 
 ### Goal
 Remember user-provided data across multiple messages.
@@ -535,7 +549,7 @@ This is required for a realistic shopping assistant.
 
 ---
 
-## Step 14 — Checkout Auto-Fill Loop
+## Step 15 — Checkout Auto-Fill Loop
 
 ### Goal
 Create a guided form-filling loop.
@@ -553,7 +567,7 @@ This is where the demo becomes genuinely useful.
 
 ---
 
-## Step 15 — Safer Page Progression
+## Step 16 — Safer Page Progression
 
 ### Goal
 Move forward through checkout safely.
@@ -574,7 +588,7 @@ This lets the agent move through multi-step flows more naturally.
 
 ---
 
-## Step 16 — Domain-Specific Shopping Workflow
+## Step 17 — Domain-Specific Shopping Workflow
 
 ### Goal
 Assemble the full shopping demo.
@@ -597,7 +611,7 @@ This is the first “demo-complete” milestone.
 
 ---
 
-## Step 17 — Logging and Debug Trace
+## Step 18 — Logging and Debug Trace
 
 ### Goal
 Improve debugging and visibility.
@@ -623,7 +637,7 @@ Browser automation becomes much easier to debug.
 
 ---
 
-## Step 18 — Retry and Fallback Logic
+## Step 19 — Retry and Fallback Logic
 
 ### Goal
 Make the agent more robust.
@@ -640,7 +654,7 @@ This reduces brittleness and improves demo reliability.
 
 ---
 
-## Step 19 — Domain Tools Instead of Raw Actions
+## Step 20 — Domain Tools Instead of Raw Actions
 
 ### Goal
 Move from generic commands to domain-level tools.
@@ -663,7 +677,7 @@ This is cleaner, safer, and easier to maintain.
 
 ---
 
-## Step 20 — Demo Polish
+## Step 21 — Demo Polish
 
 ### Goal
 Prepare for final presentation/demo.
@@ -689,15 +703,16 @@ From this point, the recommended order is:
 
 1. Step 10 — Guided checkout state
 2. Step 11 — Product selection tools
-3. Step 12 — Missing-information detection
-4. Step 13 — Multi-turn conversation memory
-5. Step 14 — Checkout auto-fill loop
-6. Step 15 — Safer page progression
-7. Step 16 — Full shopping workflow
-8. Step 17 — Logging and debug trace
-9. Step 18 — Retry and fallback logic
-10. Step 19 — Domain-specific tool layer
-11. Step 20 — Demo polish
+3. Step 12 — Intelligent sales assistant (Vodafone iPhone flow)
+4. Step 13 — Missing-information detection
+5. Step 14 — Multi-turn conversation memory
+6. Step 15 — Checkout auto-fill loop
+7. Step 16 — Safer page progression
+8. Step 17 — Full shopping workflow
+9. Step 18 — Logging and debug trace
+10. Step 19 — Retry and fallback logic
+11. Step 20 — Domain-specific tool layer
+12. Step 21 — Demo polish
 
 ---
 
@@ -738,3 +753,5 @@ The final demo should look like this:
 9. agent stops before final submission
 
 That is the target end state of this build roadmap.
+
+---
