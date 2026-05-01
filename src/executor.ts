@@ -9,6 +9,7 @@ import { clickByVisibleText, isRiskyLabel } from "./clickActions.js";
 import { inspectFormFields } from "./formInspector.js";
 import { fillInputField } from "./inputActions.js";
 import { inspectPage } from "./pageInspector.js";
+import { addSim, selectColor, selectContractTerm, selectModel, selectStorage } from "./shoppingActions.js";
 import {
   detectCustomerField,
   formatState,
@@ -241,6 +242,71 @@ export async function executeCommand(command: Command): Promise<ExecutionResult>
         success: true,
         message: "🔄 Session state has been reset.",
       };
+    }
+
+    case "select_model": {
+      const target = command.target.trim();
+      if (!target) {
+        return {
+          success: false,
+          message: "⚠️ No model provided.",
+        };
+      }
+
+      const page = getExistingPage();
+      return selectModel(page, target);
+    }
+
+    case "select_color": {
+      const target = command.target.trim();
+      if (!target) {
+        return {
+          success: false,
+          message: "⚠️ No color provided.",
+        };
+      }
+
+      const page = getExistingPage();
+      return selectColor(page, target);
+    }
+
+    case "select_storage": {
+      const target = command.target.trim();
+      if (!target) {
+        return {
+          success: false,
+          message: "⚠️ No storage capacity provided.",
+        };
+      }
+
+      const page = getExistingPage();
+      return selectStorage(page, target);
+    }
+
+    case "add_sim": {
+      const target = command.target.trim();
+      if (!target) {
+        return {
+          success: false,
+          message: "⚠️ No SIM choice provided.",
+        };
+      }
+
+      const page = getExistingPage();
+      return addSim(page, target);
+    }
+
+    case "select_contract": {
+      const target = command.target.trim();
+      if (!target) {
+        return {
+          success: false,
+          message: "⚠️ No contract term provided.",
+        };
+      }
+
+      const page = getExistingPage();
+      return selectContractTerm(page, target);
     }
 
     case "close_browser": {

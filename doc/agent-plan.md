@@ -359,7 +359,7 @@ Add persistent session state.
 Introduces `src/sessionState.ts` and `src/types/session.ts`.
 
 The state module tracks:
-- `deviceModel`, `color`, `storage`, `simChoice` — product selections
+- `deviceModel`, `color`, `storage`, `simChoice`, `contractTerm` — product selections
 - `customerName`, `customerPhone`, `customerEmail`, `customerAddress` — customer info
 - `journeyStep` — current stage: idle, product_selection, cart, checkout, customer_info, review
 - `currentUrl` — updated automatically on every `open_website` command
@@ -386,7 +386,7 @@ With state, it becomes a real assistant that remembers context across the conver
 
 ---
 
-## Step 11 — Product Selection Tools
+## Step 11 — Product Selection Tools ✅
 
 ### Goal
 Introduce domain-specific product actions.
@@ -398,13 +398,96 @@ Move from generic clicks to shopping-specific actions like:
 - choose capacity
 - add SIM card
 
-### Why it matters
-This makes the demo more stable and much easier to manage than raw clicking.
+### What was implemented
 
-### Likely new file
-- `src/shoppingActions.ts`
-or
-- `src/productActions.ts`
+**Core module: `src/shoppingActions.ts`**
+- Five main functions for product selection:
+  - `selectModel(page, modelName)` — Find and click model options, update state
+  - `selectColor(page, colorName)` — Find and click color options, update state
+  - `selectStorage(page, capacity)` — Find and click storage capacity options, update state
+  - `addSim(page, simChoice)` — Find and click SIM options (eSIM, physical, none), update state
+  - `selectContractTerm(page, term)` — Find and click contract term options (12/24/36 months), update state
+
+- Supporting helpers for robust radio/checkbox handling:
+  - `getLabelForInput()` — Extracts display text from hidden inputs via aria-label, value, or associated label
+  - `tryClickByRadioOrCheckbox()` — Handles styled/hidden radio buttons with multi-strategy approach:
+    * Strategy 1: Click associated label element
+    * Strategy 2: Normal click on input
+    * Strategy 3: Force click on input
+    * Strategy 4: Set checked property + dispatch input/change events for JS framework support
+    * Verifies checked state after each strategy before returning success
+  - `tryClickByButton()` — Fallback for button-based selections
+  - `findAllAvailableOptions()` — Collects options from both hidden and visible inputs
+  
+**Command integration:**
+- New commands added to schema:
+  - `select_model` — parses "select iPhone 15" or "choose Pro Max"
+  - `select_color` — parses "select black" or "choose blue"
+  - `select_storage` — parses "select 256GB" or "choose 512GB"
+  - `add_sim` — parses "add eSIM" or "select physical SIM"
+  - `select_contract` — parses "select 12 months" or "choose 36"
+- `src/aiParser.ts` updated:
+  - `parseSimpleCommands` now recognizes shopping patterns with regex matching
+  - `normalizeCommand` validates shopping commands with target parameters
+  - AI system prompt documenting all shopping commands for LLM parser
+- `src/executor.ts` updated:
+  - Imports shopping action functions
+  - New case branches for all four shopping commands
+  - Each command validates target, retrieves page, calls shopping function
+
+**Key features:**
+- Partial text matching for product options (case-insensitive, substring-based)
+- Automatic session state updates via `updateState()`
+- User-friendly error messages with available option suggestions
+- Real DOM verification: only reports success when input is actually checked
+- Compatibility with modern e-commerce sites using styled radio buttons (display: none, opacity: 0)
+
+### How to verify
+1. Run: `pnpm build && pnpm start`
+2. Type: `select black` on a real phone product page with styled radio buttons
+   - Should show `✅ Selected color: Black` if radio became checked
+   - Visible UI updates (images, prices) should reflect the color change
+3. Debug troubleshooting if UI does not update:
+   - Type: `inspect page` to see current page state
+   - Type: `list inputs` to see all available form fields
+   - Browser DevTools → inspect the radio input to verify:
+     * `aria-label` or `value` attribute contains color name
+     * Input has `id` with an associated `<label for="id">`
+     * Input is hidden with CSS (display: none, opacity: 0)
+4. Type: `show state` → Product fields should show selected values if selection succeeded
+5. Example workflow:
+   ```
+   open https://shop.example.com/phone
+   select sky blue
+   select 256GB
+   select eSIM
+   show state
+   ```
+
+### Debugging insights
+- **Hidden radio buttons**: Modern e-commerce sites hide true radio inputs and style labels. The code handles this by:
+  - Extracting labels from aria-label, value attributes, or `<label>` elements
+  - Using force clicks and event dispatch to trigger JS framework listeners
+  - Verifying checked state in DOM before confirming success
+- **Bidirectional label matching** (May 1 enhancement): Labels on e-commerce pages are often abbreviated. The matching logic now supports bidirectional substring matching:
+  - "12 months" user input can match abbreviated "12" label on page
+  - "Silver" user input can match full "Silver" label
+  - "Sky Blue" search can find "Sky Blue" label or vice versa
+  - Implementation: `labelLower.includes(searchLower) || searchLower.includes(labelLower)`
+  - Applies across radio button matching, button fallback, and option suggestions
+- **If selection fails**: Check the terminal output for available options; the code suggests what worked: `Try: "select Sky Blue"`
+- **If UI doesn't update**: The radio is likely clicked but JavaScript handlers didn't fire. Check browser console for JS errors.
+
+### Why it matters
+Shopping-specific commands are more reliable and maintainable than raw clicking on arbitrary buttons.
+The agent can now understand high-level product selection intent (e.g., "pick sky blue") rather than requiring exact UI text or button names.
+Crucially, the implementation handles **real-world e-commerce challenges**:
+- Hidden radio buttons styled with CSS (the norm in modern sites)
+- Multiple click strategies for different JavaScript frameworks
+- Verification of actual selection state before confirming to user
+- Automatic session state capture for checkout continuity
+
+This foundation makes Step 12 (Missing-Information Detection) and Step 14 (Checkout Auto-Fill Loop) much more tractable.
 
 ---
 

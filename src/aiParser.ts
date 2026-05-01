@@ -81,6 +81,47 @@ function parseSimpleCommands(message: string): Command | null {
     return { type: "unknown" };
   }
 
+  // Shopping command patterns
+  if (lower.match(/^(select|choose)\s+(model|iphone|android)/i)) {
+    const match = trimmed.match(/^(select|choose)\s+(.+)$/i);
+    if (match) {
+      const target = normalizeText(match[2]);
+      return target ? { type: "select_model", target } : { type: "unknown" };
+    }
+  }
+
+  if (lower.match(/^(select|choose)\s+(color|black|white|blue|red|green|purple|gold|silver)/i)) {
+    const match = trimmed.match(/^(select|choose)\s+(.+)$/i);
+    if (match) {
+      const target = normalizeText(match[2]);
+      return target ? { type: "select_color", target } : { type: "unknown" };
+    }
+  }
+
+  if (lower.match(/^(select|choose)\s+(storage|capacity|gb|tb|128|256|512)/i)) {
+    const match = trimmed.match(/^(select|choose)\s+(.+)$/i);
+    if (match) {
+      const target = normalizeText(match[2]);
+      return target ? { type: "select_storage", target } : { type: "unknown" };
+    }
+  }
+
+  if (lower.match(/^(add|select)\s+(sim|esim|physical|no sim)/i)) {
+    const match = trimmed.match(/^(add|select)\s+(.+)$/i);
+    if (match) {
+      const target = normalizeText(match[2]);
+      return target ? { type: "add_sim", target } : { type: "unknown" };
+    }
+  }
+
+  if (lower.match(/^(select|choose)\s+(contract|month|24|36|12)/i)) {
+    const match = trimmed.match(/^(select|choose)\s+(.+)$/i);
+    if (match) {
+      const target = normalizeText(match[2]);
+      return target ? { type: "select_contract", target } : { type: "unknown" };
+    }
+  }
+
   if (lower.startsWith("open ")) {
     const target = normalizeText(trimmed.slice(5));
     return target ? { type: "open_website", target } : { type: "unknown" };
@@ -96,7 +137,7 @@ function normalizeCommand(obj: unknown): Command {
 
   const record = obj as { type?: unknown; target?: unknown; value?: unknown };
 
-  if (record.type === "open_website" || record.type === "click_text" || record.type === "confirm_click_text") {
+  if (record.type === "open_website" || record.type === "click_text" || record.type === "confirm_click_text" || record.type === "select_model" || record.type === "select_color" || record.type === "select_storage" || record.type === "add_sim" || record.type === "select_contract") {
     if (typeof record.target !== "string" || !normalizeText(record.target)) {
       return { type: "unknown" };
     }
@@ -104,7 +145,7 @@ function normalizeCommand(obj: unknown): Command {
     return {
       type: record.type,
       target: normalizeText(record.target),
-    };
+    } as Command;
   }
 
   if (record.type === "fill_input") {
@@ -216,10 +257,35 @@ Supported commands:
   - "type 0400111222 into Phone"
   - "type iPhone into Search"
 
-12. exit
+12. select_model
+- Use when the user wants to select or choose a product model
+- Put the model name into "target"
+- Example: "select iPhone 15" or "choose Pro Max"
+
+13. select_color
+- Use when the user wants to select or choose a color
+- Put the color into "target"
+- Example: "select black" or "choose blue"
+
+14. select_storage
+- Use when the user wants to select or choose storage capacity
+- Put the capacity into "target"
+- Example: "select 256GB" or "choose 512GB"
+
+15. add_sim
+- Use when the user wants to add or select a SIM option
+- Put the SIM choice into "target"
+- Example: "add eSIM" or "select physical SIM"
+
+16. select_contract
+- Use when the user wants to select or choose a contract term
+- Put the contract term into "target"
+- Example: "select 24 months" or "choose 36 month"
+
+17. exit
 - Use when the user wants to quit the CLI
 
-13. unknown
+18. unknown
 - Use when none of the above apply
 
 Rules:
@@ -228,6 +294,11 @@ Rules:
   - click_text
   - confirm_click_text
   - fill_input
+  - select_model
+  - select_color
+  - select_storage
+  - add_sim
+  - select_contract
 - Only include "value" for fill_input
 - Do not invent websites
 - Do not invent button labels

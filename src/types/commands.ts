@@ -14,6 +14,11 @@ export const commandTypeSchema = z.enum([
   "fill_input",
   "show_state",
   "reset_state",
+  "select_model",
+  "select_color",
+  "select_storage",
+  "add_sim",
+  "select_contract",
   "exit",
   "unknown",
 ]);
@@ -31,6 +36,11 @@ export type Command =
   | { type: "click_text"; target: string }
   | { type: "confirm_click_text"; target: string }
   | { type: "fill_input"; target: string; value: string }
+  | { type: "select_model"; target: string }
+  | { type: "select_color"; target: string }
+  | { type: "select_storage"; target: string }
+  | { type: "add_sim"; target: string }
+  | { type: "select_contract"; target: string }
   | { type: "get_title" }
   | { type: "get_url" }
   | { type: "close_browser" }

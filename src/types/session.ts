@@ -12,6 +12,7 @@ export interface SessionState {
   color: string | null;
   storage: string | null;
   simChoice: string | null;
+  contractTerm: string | null;
 
   // Customer information
   customerName: string | null;
