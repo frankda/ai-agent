@@ -7,8 +7,15 @@ const RISKY_LABEL_PATTERNS = [
   /submit order/i,
   /confirm order/i,
   /pay now/i,
+  /pay\b/i,
   /continue to payment/i,
   /buy now/i,
+  /complete purchase/i,
+  /complete order/i,
+  /submit application/i,
+  /^\s*select this phone\s*$/i,
+  /agree( and|,? then) (continue|proceed)/i,
+  /accept( and|,? then) (continue|proceed)/i,
 ];
 
 interface ClickLocatorResult {

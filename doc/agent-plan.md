@@ -491,17 +491,70 @@ This foundation makes Step 13 (Missing-Information Detection) and Step 15 (Check
 
 ---
 
-## Step 12 — Intelligent Sales Assistant (Vodafone iPhone Flow)
+## Step 12 — Intelligent Sales Assistant (Vodafone iPhone Flow) ✅
 
 ### Goal
-Add the next track for a conversational sales assistant that understands purchase intent and executes browser-based product selection flow.
+Conversational agent that drives the Vodafone iPhone purchase flow page-by-page until reaching a checkout/review page.
 
-### What this step does
-Use the dedicated deep-dive implementation and verification plan in:
-- [doc/vodafone-sales-assistant-plan.md](doc/vodafone-sales-assistant-plan.md)
+### Architecture (implemented)
+Replaced the "one-message → one-command" parser with a **tool-using agent loop**:
+
+```
+User input
+  → src/index.ts          conversation loop, owns history & user I/O
+  → src/agent.ts          decideNextAction(history, snapshot, state) → AgentAction
+                          (LLM with structured-output schema = 6-tool union)
+  → src/pageReader.ts     readPage(page) → PageSnapshot
+                          (option groups, inputs, primary buttons, inline errors)
+  → src/agentTools.ts     executeAction(action, snapshot, lastUserMessage)
+                          dispatches to existing modules:
+                            - shoppingActions.tryClickByRadioOrCheckbox / tryClickByButton
+                            - inputActions.fillInputField
+                            - clickActions.clickByVisibleText (with risky-label gate)
+                            - browser.openWebsite
+                          and updates sessionState
+```
+
+**Tool union** (src/types/agentAction.ts): `open_url`, `ask_user`, `select_option`, `fill_field`, `click_button`, `done`.
+
+**Per-turn semantics** (src/index.ts `runAgentTurn`):
+1. user input pushed to history
+2. inner loop, up to 8 steps:
+   - `readPage` → `decideNextAction` → `executeAction`
+   - if action is `ask_user` or `done` → break and await next user input
+   - if URL/title looks like checkout → auto-stop with `done` semantics
+3. risky button clicks (RISKY_LABEL_PATTERNS / snapshot.isRisky) require an immediately preceding affirmative user message, otherwise rejected at the tool layer
+
+**Why this shape**:
+- Pages downstream of the product page (cart, plan, customer info, address, account) all have different controls. The previous "one command per option group" design would balloon. The agent loop sees the page snapshot and decides per-page; new pages do not need new command types.
+- Old executor.ts / aiParser.ts retained for low-level debug commands.
+
+### Files added
+- src/types/pageSnapshot.ts
+- src/types/agentAction.ts
+- src/pageReader.ts
+- src/agent.ts
+- src/agentTools.ts
+
+### Files modified
+- src/index.ts — rewritten as conversation+agent loop
+- src/clickActions.ts — extended RISKY_LABEL_PATTERNS (Pay, Complete order, Submit application, Select this phone, etc.)
+- src/utils/fieldConstants.ts — extended SENSITIVE_FIELD_PATTERNS (DOB, SSN, license, passport, Medicare, TFN)
+- src/shoppingActions.ts — exported `getLabelForInput`, `tryClickByRadioOrCheckbox`, `tryClickByButton` for reuse
+
+### How to verify
+1. `pnpm build && pnpm start`
+2. `You> I want to buy an iPhone 17 Pro Max`
+3. Agent should auto `open_url` to the product page → ask color → ask storage → ask contract → confirm → click "Select this phone" → continue page-by-page until checkout
+4. Meta commands: `show state`, `reset state`, `debug snapshot`, `exit`
+
+### Deferred
+- Voice layer (STT/TTS) — only the readline I/O in `index.ts` needs replacement, agent loop is unchanged.
+- Structured per-session jsonl logging.
+- Plan agent / multi-step lookahead (currently one tool per LLM call).
 
 ### Why it matters
-This introduces the purchase-flow orchestrator track while keeping the main roadmap concise.
+This is the architectural backbone: every later checkout-related step (Steps 13-17) was originally "more commands". Under the agent loop, those steps become page-specific prompt tweaks and tool-result handling instead of new command types.
 
 ---
 

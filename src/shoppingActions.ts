@@ -5,7 +5,7 @@ import { updateState } from "./sessionState.js";
 /**
  * Finds the label text for an input element (by id or aria-label).
  */
-async function getLabelForInput(page: Page, inputElement: Locator): Promise<string | null> {
+export async function getLabelForInput(page: Page, inputElement: Locator): Promise<string | null> {
   try {
     // First try aria-label
     const ariaLabel = await inputElement.getAttribute("aria-label").catch(() => null);
@@ -40,7 +40,7 @@ async function getLabelForInput(page: Page, inputElement: Locator): Promise<stri
  * Radio/checkbox inputs are often hidden with CSS, so we try to click them even if not visible,
  * or we click their associated label.
  */
-async function tryClickByRadioOrCheckbox(
+export async function tryClickByRadioOrCheckbox(
   page: Page,
   searchTerm: string
 ): Promise<{ success: boolean; matchedText?: string }> {
@@ -153,7 +153,7 @@ async function tryClickByRadioOrCheckbox(
  * Tries to find and click a button matching the search term.
  * Uses substring matching with case-insensitive comparison.
  */
-async function tryClickByButton(
+export async function tryClickByButton(
   page: Page,
   searchTerm: string
 ): Promise<{ success: boolean; matchedText?: string }> {

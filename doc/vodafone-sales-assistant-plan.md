@@ -1,5 +1,7 @@
 # Intelligent Sales Assistant Plan (Vodafone iPhone Flow)
 
+> **Status (2026-05-05): SUPERSEDED.** Steps A1–A12 below described a per-page command-extension approach that scoped only to clicking "Select this phone". The implementation pivoted to a generic **agent-loop-with-tools** architecture that reaches the checkout page. See [agent-plan.md Step 12](agent-plan.md) and the source modules `src/agent.ts`, `src/agentTools.ts`, `src/pageReader.ts`, `src/types/agentAction.ts` for the live design.
+
 This plan covers a conversational sales assistant that understands natural-language purchase requests and autonomously performs browser-based purchasing steps.
 
 Scope for this phase:
