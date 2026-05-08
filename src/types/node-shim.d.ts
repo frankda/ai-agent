@@ -8,6 +8,7 @@ declare const process: {
 declare module "node:readline" {
   interface Interface {
     question(query: string, callback: (answer: string) => void): void;
+    close(): void;
   }
 
   function createInterface(options: {
