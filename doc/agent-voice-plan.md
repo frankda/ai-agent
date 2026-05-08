@@ -2,7 +2,7 @@
 
 ## TL;DR
 
-Add voice-based ordering alongside existing text chat by introducing an `InputProvider` abstraction over I/O in `src/index.ts`, then creating a `VoiceInputProvider` backed by a local Whisper STT server and a local Piper TTS server. The entire agent pipeline (`agent.ts` → `agentTools.ts` → browser modules) is input-source agnostic and requires zero changes.
+Add voice-based ordering alongside existing text chat by introducing an `InputProvider` abstraction over I/O in `src/index.ts`, then creating a `VoiceInputProvider` backed by a local Whisper STT server and macOS `say` for TTS. The entire agent pipeline (`agent.ts` → `agentTools.ts` → browser modules) is input-source agnostic and requires zero changes.
 
 ---
 
@@ -82,19 +82,51 @@ Decouple all user-facing I/O from `src/index.ts` into an `InputProvider` interfa
 
 ## Phase 2 — Stand Up Whisper STT Server
 
-Install and run a local Whisper server for speech-to-text transcription.
+Install OpenAI Whisper and run a thin HTTP wrapper for speech-to-text transcription.
 
 ### Steps
 
-4. **Stand up local Whisper server** — Use `faster-whisper-server` (Python, runs on CPU or GPU):
-   - Install: `pip install faster-whisper-server`
-   - Run: `faster-whisper-server --model Systran/faster-whisper-base.en --host 127.0.0.1 --port 8282`
-   - Exposes OpenAI-compatible endpoint: `POST http://127.0.0.1:8282/v1/audio/transcriptions`
-   - Document the startup command in README or a `scripts/` helper
+4. **Stand up local Whisper server** — Use OpenAI's `openai-whisper` package (trusted publisher, MIT license, 99k+ GitHub stars) with a thin FastAPI wrapper:
+   - Install prerequisites: `brew install ffmpeg` (required by Whisper)
+   - Install Whisper: `pip3 install openai-whisper fastapi uvicorn python-multipart`
+   - Create a minimal server script (`scripts/whisper-server.py`):
+     ```python
+     from fastapi import FastAPI, UploadFile, File, Form
+     import whisper, tempfile, os
+
+     app = FastAPI()
+     model = whisper.load_model("base.en")
+
+     @app.post("/v1/audio/transcriptions")
+     async def transcribe(file: UploadFile = File(...), model_name: str = Form(default="base.en", alias="model")):
+         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+             tmp.write(await file.read())
+             tmp_path = tmp.name
+         try:
+             result = model.transcribe(tmp_path)
+             return {"text": result["text"].strip()}
+         finally:
+             os.unlink(tmp_path)
+     ```
+   - Run: `uvicorn scripts.whisper-server:app --host 127.0.0.1 --port 8282`
+   - Exposes endpoint: `POST http://127.0.0.1:8282/v1/audio/transcriptions`
+
+   **Why OpenAI Whisper over `faster-whisper-server`:**
+   - Trusted publisher (OpenAI), 99k+ stars, 84 contributors, MIT licensed
+   - The `faster-whisper-server` PyPI package (v0.0.2) is an unrelated, single-release package with no linked source repo — potential name-squatting risk
+   - The well-known GitHub project (`fedirz/faster-whisper-server`) has been renamed to `speaches` and is not the same as the PyPI package
+   - OpenAI Whisper is compatible with Python 3.8–3.11, including the system Python 3.9 on macOS — no need to install a newer Python version
 
 ### Verification (Phase 2)
 - Server starts without errors and listens on `http://127.0.0.1:8282`
-- `curl` a known WAV file to the endpoint and receive a JSON transcription response
+- Test with curl:
+  ```bash
+  say -o /tmp/test-stt.wav --data-format=LEI16@16000 "hello world"
+  curl -s http://127.0.0.1:8282/v1/audio/transcriptions \
+    -F "file=@/tmp/test-stt.wav" \
+    -F "model=base.en"
+  ```
+- Response should contain `{"text": "hello world"}`
 
 ---
 
@@ -107,15 +139,16 @@ Create a Node client that captures microphone audio and sends it to the Whisper 
 5. **Create `src/voice/stt.ts`** — Whisper HTTP client:
    - `transcribe(audioBuffer: Buffer): Promise<string>`
      - POST multipart form to `http://127.0.0.1:8282/v1/audio/transcriptions` (configurable via `STT_BASE_URL` env var)
-     - Body: `file` = audio buffer as WAV, `model` = "whisper-base.en"
+     - Body: `file` = audio buffer as WAV, `model` = "base.en"
      - Parse JSON response → return `.text` field
    - Use native `fetch` (Node 18+) — no extra HTTP deps needed
 
 6. **Create `src/voice/audioCapture.ts`** — Microphone recording:
    - `recordUntilSilence(): Promise<Buffer>` — records from default mic, stops after ~1.5s of silence
-   - Use `node-record-lpcm16` (spawns `sox` or `rec` under the hood — available on macOS via `brew install sox`)
-   - Returns raw PCM buffer, wrapped with WAV header for Whisper
-   - Alternative: use `sox` directly via `child_process.spawn` for fewer deps
+   - Spawn `sox` directly via `child_process.spawn` (available on macOS via `brew install sox`) — no npm wrapper needed
+   - Command: `sox -d -t wav -r 16000 -c 1 -b 16 - silence 1 0.1 0.5% 1 1.5 0.5%`
+   - Captures 16kHz mono 16-bit WAV from default mic, stops after 1.5s of silence
+   - Returns the WAV buffer directly (already in correct format for Whisper)
 
 ### Verification (Phase 3)
 - Unit-test `transcribe()` by sending a known WAV file to the running Whisper server
@@ -123,36 +156,34 @@ Create a Node client that captures microphone audio and sends it to the Whisper 
 
 ---
 
-## Phase 4 — Stand Up Piper TTS Server
+## Phase 4 — TTS Setup (macOS `say`)
 
-Install and run a local TTS server for text-to-speech synthesis.
+Use the macOS built-in `say` command for text-to-speech — zero infrastructure, no server, no model downloads.
 
 ### Steps
 
-7. **Stand up local Piper TTS server** — lightweight, fast, runs on CPU:
-   - Install: download Piper binary + an English voice model (e.g., `en_US-lessac-medium`)
-   - Run via HTTP wrapper or use `piper-tts` npm package for direct invocation
-   - Alternative: use macOS built-in `say` command for zero-infra TTS (lower quality but no server needed)
-   - Document the startup command
+7. **Verify `say` is available** — macOS ships with `say` pre-installed:
+   - Run `say "hello world"` — confirm audio plays through speakers
+   - Select a voice: `say -v '?'` lists available voices. Default is fine; optionally use `say -v Samantha` for a natural US English voice
+   - No installation, no server, no model downloads required
 
 ### Verification (Phase 4)
-- Server starts without errors (or `say` command is available on macOS)
-- Send a test text string to the endpoint / run `say "hello"` and confirm audio output
+- Run `say "hello world"` in terminal → audio plays
+- Run `say -v Samantha "I am your sales assistant"` → confirms voice selection works
 
 ---
 
 ## Phase 5 — TTS Client Module (Text-to-Speech)
 
-Create a Node client that converts text to speech and plays it through the speakers.
+Create a Node client that converts text to speech using macOS `say`.
 
 ### Steps
 
-8. **Create `src/voice/tts.ts`** — TTS client + playback:
+8. **Create `src/voice/tts.ts`** — TTS via macOS `say`:
    - `speak(text: string): Promise<void>`
-   - **Option A (Piper server):** POST text to Piper HTTP endpoint → receive WAV bytes → play via `afplay` (macOS) using `child_process.execFile`
-   - **Option B (macOS `say`):** `child_process.execFile("say", [text])` — zero infra, good enough for demo
-   - Make strategy configurable via `TTS_BACKEND` env var (`"piper"` | `"say"`)
-   - Strip emoji from text before speaking (regex: remove chars outside BMP or known emoji ranges) — TTS engines choke on emoji
+   - Implementation: `child_process.execFile("say", [stripped])` wrapped in a Promise
+   - Strip emoji from text before speaking (regex: remove chars outside BMP or known emoji ranges) — `say` chokes on emoji
+   - Optionally accept a voice name via `TTS_VOICE` env var (default: system default voice)
 
 ### Verification (Phase 5)
 - Manual test: call `speak("Hello, I am your sales assistant")` → audio plays through speakers
@@ -190,11 +221,11 @@ Combine STT + TTS into a `VoiceInputProvider` and wire it into `index.ts`.
     - Pass to main loop
 
 11. **Update `package.json`**:
-    - Add dependency: `node-record-lpcm16` (for mic capture)
     - Add scripts:
       - `"start:voice": "node dist/index.js --voice"`
       - `"dev:voice": "npm run build && npm run start:voice"`
     - Document `sox` as a system prerequisite (macOS: `brew install sox`)
+    - No new npm dependencies needed — mic capture uses direct `sox` spawn, TTS uses macOS `say`
 
 ### Verification (Phase 6)
 - `pnpm build` — no type errors
@@ -220,7 +251,7 @@ Combine STT + TTS into a `VoiceInputProvider` and wire it into `index.ts`.
 
 **Modified files:**
 - `src/index.ts` — Refactor to use `InputProvider`; add `--voice` flag; replace recursive `prompt()` with async loop
-- `package.json` — Add `node-record-lpcm16` dep; add `start:voice` and `dev:voice` scripts
+- `package.json` — Add `start:voice` and `dev:voice` scripts (no new npm deps)
 
 **Unchanged files (no modifications needed):**
 - `src/agent.ts` — `decideNextAction()` receives strings, returns `AgentAction`
@@ -247,12 +278,12 @@ Combine STT + TTS into a `VoiceInputProvider` and wire it into `index.ts`.
 
 - **Reuse existing Mistral LLM server** — STT (Whisper) and TTS (Piper/`say`) are separate services, not LLMs. Mistral is unchanged.
 - **`InputProvider` interface over I/O** — cleanest separation; the agent pipeline is already input-agnostic, only `index.ts` does I/O.
-- **macOS `say` as fallback TTS** — zero infrastructure for demos; Piper for production-quality voice.
+- **macOS `say` for TTS** — zero infrastructure, no server, no model downloads. Ships with macOS. Good enough quality for a voice ordering agent.
+- **Direct `sox` spawn for mic capture** — no npm wrapper (`node-record-lpcm16` is abandoned 6 years). Spawn `sox` via `child_process` directly. Requires `brew install sox`.
 - **Console echo in voice mode** — always print to terminal even when speaking, for debug visibility.
-- **`sox` as system dep** — required by `node-record-lpcm16` for mic capture on macOS. Document in README.
 
 ## Further Considerations
 
-1. **Silence detection tuning** — `node-record-lpcm16` has a `silence` threshold parameter. May need tuning for noisy environments. Start with 1.5s silence / threshold 0.5 and adjust.
+1. **Silence detection tuning** — `sox` silence parameters may need tuning for noisy environments. Start with 1.5s silence / 0.5% threshold and adjust.
 2. **Concurrent speech** — If the agent is speaking (TTS) when the user starts talking, the mic may capture the agent's own voice. Consider muting mic during TTS playback, or using a push-to-talk model for v1.
 3. **Streaming TTS** — For long agent responses, waiting for full TTS synthesis before playback adds latency. v1 can use sentence-level chunking (split on `.` / `?` / `!`, speak each chunk). Not required for initial implementation.
