@@ -80,9 +80,9 @@ Decouple all user-facing I/O from `src/index.ts` into an `InputProvider` interfa
 
 ---
 
-## Phase 2 — STT Module (Speech-to-Text)
+## Phase 2 — Stand Up Whisper STT Server
 
-Stand up a local Whisper server and create a Node client that captures microphone audio and returns transcribed text.
+Install and run a local Whisper server for speech-to-text transcription.
 
 ### Steps
 
@@ -91,6 +91,18 @@ Stand up a local Whisper server and create a Node client that captures microphon
    - Run: `faster-whisper-server --model Systran/faster-whisper-base.en --host 127.0.0.1 --port 8282`
    - Exposes OpenAI-compatible endpoint: `POST http://127.0.0.1:8282/v1/audio/transcriptions`
    - Document the startup command in README or a `scripts/` helper
+
+### Verification (Phase 2)
+- Server starts without errors and listens on `http://127.0.0.1:8282`
+- `curl` a known WAV file to the endpoint and receive a JSON transcription response
+
+---
+
+## Phase 3 — STT Client Module (Speech-to-Text)
+
+Create a Node client that captures microphone audio and sends it to the Whisper server for transcription.
+
+### Steps
 
 5. **Create `src/voice/stt.ts`** — Whisper HTTP client:
    - `transcribe(audioBuffer: Buffer): Promise<string>`
@@ -105,15 +117,15 @@ Stand up a local Whisper server and create a Node client that captures microphon
    - Returns raw PCM buffer, wrapped with WAV header for Whisper
    - Alternative: use `sox` directly via `child_process.spawn` for fewer deps
 
-### Verification (Phase 2)
+### Verification (Phase 3)
 - Unit-test `transcribe()` by sending a known WAV file to the running Whisper server
 - Manual test: run `audioCapture.recordUntilSilence()` in a scratch script → verify it produces a buffer → send to `transcribe()` → verify text output matches spoken words
 
 ---
 
-## Phase 3 — TTS Module (Text-to-Speech)
+## Phase 4 — Stand Up Piper TTS Server
 
-Stand up a local TTS server and create a Node client that converts text to speech and plays it.
+Install and run a local TTS server for text-to-speech synthesis.
 
 ### Steps
 
@@ -123,6 +135,18 @@ Stand up a local TTS server and create a Node client that converts text to speec
    - Alternative: use macOS built-in `say` command for zero-infra TTS (lower quality but no server needed)
    - Document the startup command
 
+### Verification (Phase 4)
+- Server starts without errors (or `say` command is available on macOS)
+- Send a test text string to the endpoint / run `say "hello"` and confirm audio output
+
+---
+
+## Phase 5 — TTS Client Module (Text-to-Speech)
+
+Create a Node client that converts text to speech and plays it through the speakers.
+
+### Steps
+
 8. **Create `src/voice/tts.ts`** — TTS client + playback:
    - `speak(text: string): Promise<void>`
    - **Option A (Piper server):** POST text to Piper HTTP endpoint → receive WAV bytes → play via `afplay` (macOS) using `child_process.execFile`
@@ -130,13 +154,13 @@ Stand up a local TTS server and create a Node client that converts text to speec
    - Make strategy configurable via `TTS_BACKEND` env var (`"piper"` | `"say"`)
    - Strip emoji from text before speaking (regex: remove chars outside BMP or known emoji ranges) — TTS engines choke on emoji
 
-### Verification (Phase 3)
+### Verification (Phase 5)
 - Manual test: call `speak("Hello, I am your sales assistant")` → audio plays through speakers
 - Verify emoji stripping: `speak("🛑 Reached checkout")` → speaks "Reached checkout" without errors
 
 ---
 
-## Phase 4 — Voice Provider & Integration
+## Phase 6 — Voice Provider & Integration
 
 Combine STT + TTS into a `VoiceInputProvider` and wire it into `index.ts`.
 
@@ -172,7 +196,7 @@ Combine STT + TTS into a `VoiceInputProvider` and wire it into `index.ts`.
       - `"dev:voice": "npm run build && npm run start:voice"`
     - Document `sox` as a system prerequisite (macOS: `brew install sox`)
 
-### Verification (Phase 4)
+### Verification (Phase 6)
 - `pnpm build` — no type errors
 - `pnpm start` — text mode works unchanged (regression check)
 - `pnpm start:voice` — voice mode:
