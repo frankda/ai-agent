@@ -14,8 +14,9 @@ Decouple all user-facing I/O from `src/index.ts` into an `InputProvider` interfa
 
 1. **Create `src/types/inputProvider.ts`** — Define the `InputProvider` interface:
    - `getInput(): Promise<string>` — blocking call that returns the next user message as text
-   - `sendOutput(message: string): Promise<void>` — delivers agent output to the user
-   - `sendError(message: string): Promise<void>` — delivers error output
+   - `sendOutput(message: string): Promise<void>` — prints debug/status output to terminal (never spoken)
+   - `sendError(message: string): Promise<void>` — prints error output to terminal (never spoken)
+   - `speakToUser(message: string): Promise<void>` — delivers a conversational message; in voice mode this is spoken aloud AND printed; in text mode this is just printed
    - `close(): void` — cleanup (close readline, stop mic, etc.)
 
 2. **Create `src/io/textProvider.ts`** — Implements `InputProvider` by wrapping the existing `readline` logic currently in `index.ts`:
@@ -25,30 +26,51 @@ Decouple all user-facing I/O from `src/index.ts` into an `InputProvider` interfa
    - `sendError()` calls `console.error()`
    - `close()` calls `rl.close()`
 
-3. **Refactor `src/index.ts`** to use `InputProvider` instead of direct readline/console calls:
-   - Remove `const rl = readline.createInterface(...)` — now inside `TextInputProvider`
+3. **Refactor `src/index.ts`** to route output through `InputProvider` while retaining all existing terminal output for text-mode users:
+
+   **Key principle:** Text-mode behaviour is unchanged. `TextInputProvider.sendOutput()` calls `console.log()` internally, and `TextInputProvider.sendError()` calls `console.error()` internally. Every message that currently appears in the terminal continues to appear identically. The abstraction exists solely so that `VoiceInputProvider` can additionally speak messages aloud (while still printing them to the terminal).
+
+   Changes:
+   - Move `const rl = readline.createInterface(...)` into `TextInputProvider` (it is still created and used — just encapsulated)
    - Replace recursive `prompt()` function with an async `while(true)` main loop calling `io.getInput()`
-   - Replace every `console.log(...)` in `runAgentTurn` and `handleMetaCommand` with `io.sendOutput(...)`
-   - Replace `console.error("❌ Error:", message)` with `io.sendError(...)`
+   - Route output through `io.sendOutput(...)` / `io.sendError(...)` instead of calling `console.log` / `console.error` directly
    - `runAgentTurn` gains a second parameter: `io: InputProvider`
    - `handleMetaCommand` gains an `io: InputProvider` parameter
    - Keep `process.exit(0)` for "exit"/"quit" — call `io.close()` before it
-   - Startup banner (`console.log("✅ Vodafone Sales Assistant...")`) goes through `io.sendOutput()`
    - Select provider based on `process.argv.includes("--voice")`
 
-   **Specific I/O replacements in `index.ts`:**
-   | Current code | Replacement |
-   |---|---|
-   | `rl.question("\nYou> ", cb)` | `await io.getInput()` |
-   | `console.log("👋 bye")` | `await io.sendOutput("👋 bye")` |
-   | `console.log(formatState())` | `await io.sendOutput(formatState())` |
-   | `console.log("🧹 state and history cleared")` | `await io.sendOutput("🧹 ...")` |
-   | `console.log(summarizeSnapshot(snapshot))` | `await io.sendOutput(summarizeSnapshot(...))` |
-   | `console.log("🛑 Reached checkout-like page...")` | `await io.sendOutput("🛑 ...")` |
-   | `console.log("💭 " + action.thought)` | `await io.sendOutput("💭 ...")` |
-   | `console.log(outcome.message)` | `await io.sendOutput(outcome.message)` |
-   | `console.log("⚠️ Reached step limit...")` | `await io.sendOutput("⚠️ ...")` |
-   | `console.error("❌ Error:", message)` | `await io.sendError("❌ Error: " + message)` |
+   **What this means for each provider:**
+
+   | Provider | `sendOutput(msg)` behaviour | `sendError(msg)` behaviour |
+   |---|---|---|
+   | `TextInputProvider` | `console.log(msg)` — identical to current behaviour | `console.error(msg)` — identical to current behaviour |
+   | `VoiceInputProvider` | `console.log(msg)` — printed to terminal only (debug/troubleshooting visibility); NOT spoken aloud | `console.error(msg)` — printed to terminal only; NOT spoken aloud |
+
+   Voice-mode users hear only **agent conversational messages** (i.e. `ask_user` questions and `done` reasons). All other output (thoughts, tool outcomes, state dumps, warnings) is debug information and is printed to the terminal silently without TTS.
+
+   To support this distinction, `InputProvider` gains one additional method:
+   - `speakToUser(message: string): Promise<void>` — delivers a conversational message that voice users should hear. In `TextInputProvider` this is just `console.log(msg)`. In `VoiceInputProvider` this is `console.log(msg)` AND `await speak(msg)`.
+
+   Usage in `index.ts`:
+   - `io.sendOutput(...)` — for all debug/status/log messages (terminal only, never spoken)
+   - `io.speakToUser(...)` — for agent conversational replies that the user needs to hear (spoken in voice mode)
+
+   **Specific routing in `index.ts` (text users see no difference):**
+   | Current code | Routed through | Voice mode |
+   |---|---|---|
+   | `rl.question("\nYou> ", cb)` | `await io.getInput()` | Mic capture + STT |
+   | `console.log("👋 bye")` | `await io.speakToUser("👋 bye")` | Spoken (conversational) |
+   | `console.log(formatState())` | `await io.sendOutput(formatState())` | Terminal only (debug) |
+   | `console.log("🧹 state and history cleared")` | `await io.sendOutput("🧹 ...")` | Terminal only (debug) |
+   | `console.log(summarizeSnapshot(snapshot))` | `await io.sendOutput(summarizeSnapshot(...))` | Terminal only (debug) |
+   | `console.log("🛑 Reached checkout-like page...")` | `await io.speakToUser("🛑 ...")` | Spoken (conversational) |
+   | `console.log("💭 " + action.thought)` | `await io.sendOutput("💭 ...")` | Terminal only (debug) |
+   | `console.log(outcome.message)` — when `ask_user` | `await io.speakToUser(outcome.message)` | Spoken (conversational) |
+   | `console.log(outcome.message)` — other actions | `await io.sendOutput(outcome.message)` | Terminal only (debug) |
+   | `console.log("⚠️ Reached step limit...")` | `await io.sendOutput("⚠️ ...")` | Terminal only (debug) |
+   | `console.error("❌ Error:", message)` | `await io.sendError("❌ Error: " + message)` | Terminal only (debug) |
+
+   **Rule of thumb:** Only messages the user needs to *respond to* or *act on* (agent questions, confirmations, stop notices) go through `speakToUser`. Everything else is debug output routed through `sendOutput`/`sendError`.
 
 ### Verification (Phase 1)
 - `pnpm build` — no type errors
@@ -125,14 +147,15 @@ Combine STT + TTS into a `VoiceInputProvider` and wire it into `index.ts`.
      1. Play a short beep or speak "listening..." cue (optional)
      2. Call `recordUntilSilence()` from `audioCapture.ts`
      3. Call `transcribe(audioBuffer)` from `stt.ts`
-     4. Also echo transcribed text to console: `console.log("🎤 You said: " + text)` (for debug/demo visibility)
+     4. Echo transcribed text to console: `console.log("🎤 You said: " + text)` (debug visibility only)
      5. Return text
    - `sendOutput(message)`:
-     1. `console.log(message)` — always print to terminal for visibility
-     2. `await speak(message)` — also speak it aloud
+     1. `console.log(message)` — print to terminal only (debug/troubleshooting; NOT spoken)
    - `sendError(message)`:
-     1. `console.error(message)` — print
-     2. `await speak(message)` — speak error too
+     1. `console.error(message)` — print to terminal only (NOT spoken)
+   - `speakToUser(message)`:
+     1. `console.log(message)` — print to terminal for visibility
+     2. `await speak(message)` — speak aloud to the user
    - `close()`:
      - Stop any in-progress recording, no-op cleanup
 
