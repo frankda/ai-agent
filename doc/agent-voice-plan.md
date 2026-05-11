@@ -136,6 +136,10 @@ Create a Node client that captures microphone audio and sends it to the Whisper 
 
 ### Steps
 
+4b. **Install sox** — required for microphone capture:
+   - `brew install sox`
+   - Verify: `sox --version`
+
 5. **Create `src/voice/stt.ts`** — Whisper HTTP client:
    - `transcribe(audioBuffer: Buffer): Promise<string>`
      - POST multipart form to `http://127.0.0.1:8282/v1/audio/transcriptions` (configurable via `STT_BASE_URL` env var)
@@ -281,7 +285,7 @@ Combine STT + TTS into a `VoiceInputProvider` and wire it into `index.ts`.
 
 ## Decisions
 
-- **Reuse existing Mistral LLM server** — STT (Whisper) and TTS (Piper/`say`) are separate services, not LLMs. Mistral is unchanged.
+- **Reuse existing LLM server** — STT (Whisper) and TTS (`say`) are separate services, not LLMs. The LLM server is unchanged.
 - **`InputProvider` interface over I/O** — cleanest separation; the agent pipeline is already input-agnostic, only `index.ts` does I/O.
 - **macOS `say` for TTS** — zero infrastructure, no server, no model downloads. Ships with macOS. Good enough quality for a voice ordering agent.
 - **Direct `sox` spawn for mic capture** — no npm wrapper (`node-record-lpcm16` is abandoned 6 years). Spawn `sox` via `child_process` directly. Requires `brew install sox`.
