@@ -229,8 +229,13 @@ Combine STT + TTS into a `VoiceInputProvider` and wire it into `index.ts`.
 
 ### Verification (Phase 6)
 - `pnpm build` — no type errors
-- `pnpm start` — text mode works unchanged (regression check)
-- `pnpm start:voice` — voice mode:
+- **Text mode regression:** `pnpm start` (no `--voice` flag) — text mode works unchanged:
+  1. Prompt appears as `\nYou> ` in terminal
+  2. Type a message → agent processes via existing pipeline → response printed to terminal
+  3. Full Vodafone purchase loop works end-to-end via text input (navigate, select device, add to basket, reach checkout)
+  4. Meta commands (`show state`, `reset state`, `debug snapshot`, `exit`) all work
+  5. No TTS audio is produced — all output is terminal-only
+- **Voice mode:** `pnpm start:voice` — voice mode:
   1. Agent speaks the startup banner
   2. Mic captures user speech → transcribes → echoes to console
   3. Agent processes command via existing pipeline

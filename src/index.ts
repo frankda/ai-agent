@@ -4,9 +4,13 @@ import { readPage } from "./pageReader.js";
 import { getExistingPage } from "./browser.js";
 import { getState, formatState, resetState } from "./sessionState.js";
 import { TextInputProvider } from "./io/textProvider.js";
+import { VoiceInputProvider } from "./io/voiceProvider.js";
 import type { InputProvider } from "./types/inputProvider.js";
 
-const io: InputProvider = new TextInputProvider();
+const useVoice = process.argv.includes("--voice");
+const io: InputProvider = useVoice
+  ? new VoiceInputProvider()
+  : new TextInputProvider();
 
 const history: HistoryEntry[] = [];
 const MAX_STEPS_PER_TURN = 8;
