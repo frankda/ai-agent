@@ -89,7 +89,7 @@ Install OpenAI Whisper and run a thin HTTP wrapper for speech-to-text transcript
 4. **Stand up local Whisper server** — Use OpenAI's `openai-whisper` package (trusted publisher, MIT license, 99k+ GitHub stars) with a thin FastAPI wrapper:
    - Install prerequisites: `brew install ffmpeg` (required by Whisper)
    - Install Whisper: `pip3 install openai-whisper fastapi uvicorn python-multipart`
-   - Create a minimal server script (`scripts/whisper-server.py`):
+   - Create a minimal server script (`scripts/whisper_server.py`) and `scripts/__init__.py` (empty, makes `scripts` a Python package):
      ```python
      from fastapi import FastAPI, UploadFile, File, Form
      import whisper, tempfile, os
@@ -108,7 +108,7 @@ Install OpenAI Whisper and run a thin HTTP wrapper for speech-to-text transcript
          finally:
              os.unlink(tmp_path)
      ```
-   - Run: `uvicorn scripts.whisper-server:app --host 127.0.0.1 --port 8282`
+   - Run: `python3 -m uvicorn scripts.whisper_server:app --host 127.0.0.1 --port 8282`
    - Exposes endpoint: `POST http://127.0.0.1:8282/v1/audio/transcriptions`
 
    **Why OpenAI Whisper over `faster-whisper-server`:**
