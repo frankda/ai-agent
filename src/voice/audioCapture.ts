@@ -1,39 +1,28 @@
-import { spawn } from "node:child_process";
+import { spawn, execFile } from "node:child_process";
+import { readFileSync, unlinkSync } from "node:fs";
+
+const RECORD_SECONDS = process.env["RECORD_SECONDS"] ?? "5";
 
 /**
- * Records audio from the default microphone until silence is detected.
+ * Records audio from the default microphone for a fixed duration.
  * Requires `sox` to be installed (`brew install sox`).
  * Returns a WAV buffer (16kHz, mono, 16-bit signed LE).
  */
 export function recordUntilSilence(): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
+  const tmpFile = `/tmp/voice-capture-${Date.now()}.wav`;
 
-    // sox -d          → record from default mic
-    // -t wav          → output WAV format
-    // -r 16000        → 16kHz sample rate
-    // -c 1            → mono
-    // -b 16           → 16-bit
-    // -                → write to stdout
-    // silence 1 0.1 0.5%  → start recording after 0.1s of sound above 0.5% threshold
-    // 1 1.5 0.5%      → stop after 1.5s of silence below 0.5% threshold
+  return new Promise((resolve, reject) => {
     const sox = spawn("sox", [
       "-d",
       "-t", "wav",
       "-r", "16000",
       "-c", "1",
       "-b", "16",
-      "-",
-      "silence", "1", "0.1", "0.5%",
-      "1", "1.5", "0.5%",
+      tmpFile,
+      "trim", "0", RECORD_SECONDS,
     ]);
 
-    sox.stdout.on("data", (chunk: Buffer) => {
-      chunks.push(chunk);
-    });
-
     sox.stderr.on("data", (data: Buffer) => {
-      // sox prints status info to stderr — ignore unless it's a real error
       const msg = data.toString();
       if (msg.includes("FAIL") || msg.includes("error")) {
         reject(new Error(`sox error: ${msg}`));
@@ -49,7 +38,13 @@ export function recordUntilSilence(): Promise<Buffer> {
         reject(new Error(`sox exited with code ${code}`));
         return;
       }
-      resolve(Buffer.concat(chunks));
+      try {
+        const buf = readFileSync(tmpFile);
+        unlinkSync(tmpFile);
+        resolve(buf);
+      } catch (e: unknown) {
+        reject(new Error(`Failed to read recorded audio: ${(e as Error).message}`));
+      }
     });
   });
 }

@@ -5,11 +5,19 @@ import { speak } from "../voice/tts.js";
 
 export class VoiceInputProvider implements InputProvider {
   async getInput(): Promise<string> {
-    console.log("\n🎙️  Listening...");
-    const audioBuffer = await recordUntilSilence();
-    const text = await transcribe(audioBuffer);
-    console.log(`🎤 You said: ${text}`);
-    return text;
+    const secs = process.env["RECORD_SECONDS"] ?? "5";
+    console.log(`\n🎙️  Listening (${secs}s)...`);
+    try {
+      const audioBuffer = await recordUntilSilence();
+      const text = await transcribe(audioBuffer);
+      console.log(`🎤 You said: ${text}`);
+      return text;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`⚠️ Voice input failed: ${msg}`);
+      console.error("Retrying...");
+      return this.getInput();
+    }
   }
 
   async sendOutput(message: string): Promise<void> {

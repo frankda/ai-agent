@@ -52,3 +52,8 @@ declare module "node:child_process" {
     callback: (error: Error | null, stdout: string, stderr: string) => void,
   ): void;
 }
+
+declare module "node:fs" {
+  export function readFileSync(path: string): Buffer;
+  export function unlinkSync(path: string): void;
+}
