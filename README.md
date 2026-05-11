@@ -71,7 +71,7 @@ pnpm dev
 
 ## Voice Mode
 
-Voice mode lets you speak requests and hear responses. It requires additional tooling for speech-to-text (Whisper) and uses the built-in macOS `say` command for text-to-speech.
+Voice mode lets you speak requests and hear responses. It requires additional tooling for speech-to-text (OpenAI Whisper model) and uses the built-in macOS `say` command for text-to-speech.
 
 ### Additional Prerequisites
 
