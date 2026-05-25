@@ -18,6 +18,55 @@ export function isSensitiveField(fieldName: string): boolean {
   return SENSITIVE_FIELD_PATTERNS.some((pattern) => pattern.test(fieldName || ""));
 }
 
+/**
+ * Read back the value/text of an element so we can verify the fill stuck.
+ * React-controlled inputs sometimes accept Playwright's fill() at the DOM
+ * level but discard the value because the synthetic event system didn't
+ * see the change. We verify and fall back to the native setter trick.
+ */
+async function readBackValue(element: Locator): Promise<string> {
+  try {
+    return await element.evaluate((el) => {
+      const html = el as HTMLElement;
+      if (html instanceof HTMLInputElement || html instanceof HTMLTextAreaElement) {
+        return html.value || "";
+      }
+      if (html.isContentEditable) {
+        return html.textContent || "";
+      }
+      return (html as HTMLInputElement).value || html.textContent || "";
+    });
+  } catch {
+    return "";
+  }
+}
+
+async function reactNativeSetterFill(element: Locator, value: string): Promise<boolean> {
+  // Uses the underlying native value setter so React's synthetic event system
+  // picks up the change. This is the canonical fix for controlled <input>s.
+  try {
+    await element.evaluate((el, val) => {
+      const html = el as HTMLInputElement | HTMLTextAreaElement;
+      const proto =
+        el.tagName === "TEXTAREA"
+          ? HTMLTextAreaElement.prototype
+          : HTMLInputElement.prototype;
+      const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
+      if (setter) {
+        setter.call(html, val);
+      } else {
+        html.value = val;
+      }
+      html.dispatchEvent(new Event("input", { bubbles: true }));
+      html.dispatchEvent(new Event("change", { bubbles: true }));
+      html.dispatchEvent(new Event("blur", { bubbles: true }));
+    }, value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function safelyFillElement(element: Locator, value: string): Promise<boolean> {
   try {
     const visible = await element.isVisible().catch(() => false);
@@ -28,11 +77,33 @@ async function safelyFillElement(element: Locator, value: string): Promise<boole
     const editable = await element.isEditable().catch(() => false);
 
     if (editable) {
-      await element.fill("");
-      await element.fill(value);
-      return true;
+      // Strategy 1: Playwright fill — works for most fields.
+      await element.fill("").catch(() => undefined);
+      await element.fill(value).catch(() => undefined);
+      let actual = await readBackValue(element);
+      if (actual === value) return true;
+
+      // Strategy 2: focus + pressSequentially — emits proper keyboard events,
+      // some component libraries need this rather than fill().
+      await element.focus().catch(() => undefined);
+      await element.pressSequentially(value, { delay: 5 }).catch(() => undefined);
+      actual = await readBackValue(element);
+      if (actual === value) return true;
+
+      // Strategy 3: native value setter + dispatch React-compatible events.
+      const set = await reactNativeSetterFill(element, value);
+      if (set) {
+        actual = await readBackValue(element);
+        if (actual === value) return true;
+      }
+
+      // If the value matches at least partially, treat as success.
+      if (actual && actual.includes(value)) return true;
+      // Otherwise we silently failed.
+      return false;
     }
 
+    // Non-editable but maybe contenteditable.
     await element.click().catch(() => undefined);
     await element
       .evaluate((el) => {
@@ -43,7 +114,8 @@ async function safelyFillElement(element: Locator, value: string): Promise<boole
       .catch(() => undefined);
 
     await element.type(value).catch(() => undefined);
-    return true;
+    const actual = await readBackValue(element);
+    return actual === value || (actual.length > 0 && actual.includes(value));
   } catch {
     return false;
   }
@@ -193,10 +265,11 @@ export async function fillInputField(
     };
   }
 
-  if (isSensitiveField(field)) {
+  const allowSensitive = (process.env.ALLOW_SENSITIVE_FILL || "").toLowerCase() === "true";
+  if (isSensitiveField(field) && !allowSensitive) {
     return {
       success: false,
-      message: `⛔ Refusing to fill sensitive field: "${field}"`,
+      message: `⛔ Refusing to fill sensitive field: "${field}" (set ALLOW_SENSITIVE_FILL=true to bypass for demos)`,
       details: {
         field,
         reason: "sensitive_field_blocked",

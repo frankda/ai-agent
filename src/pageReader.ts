@@ -8,6 +8,9 @@ import type {
 import { inspectFormFields } from "./formInspector.js";
 import { isRiskyLabel } from "./clickActions.js";
 import { getLabelForInput } from "./shoppingActions.js";
+import { extractPlanCards, hasPlanCards } from "./vodafonePlans.js";
+import { scanSelectFields } from "./selectActions.js";
+import { waitForPageIdle } from "./utils/pageIdle.js";
 
 const EMPTY_SNAPSHOT: PageSnapshot = {
   url: "",
@@ -115,7 +118,7 @@ async function buildOptionGroups(page: Page): Promise<SnapshotOptionGroup[]> {
     const key = `${entry.name}::${entry.groupLabel}`;
     let group = buckets.get(key);
     if (!group) {
-      group = { groupLabel: entry.groupLabel, options: [] };
+      group = { groupLabel: entry.groupLabel, options: [], kind: "radio" };
       buckets.set(key, group);
     }
 
@@ -181,21 +184,29 @@ async function collectInlineErrors(page: Page): Promise<string[]> {
       const selectors = [
         "[role='alert']",
         "[aria-invalid='true']",
-        ".error",
-        ".error-message",
-        "[class*='error']",
-        "[data-testid*='error']",
+        "[data-testid*='error-message' i]",
+        "[data-testid*='field-error' i]",
+        "[class*='error-message' i]",
+        "[class*='ErrorMessage' i]",
+        "[class*='field-error' i]",
+        "[class*='form-error' i]",
+        "[class*='ValidationMessage' i]",
       ];
       const found = new Set<string>();
       for (const sel of selectors) {
         const nodes = document.querySelectorAll(sel);
         nodes.forEach((node) => {
           const el = node as HTMLElement;
-          if (!el.offsetParent) return; // not visible
+          if (!el.offsetParent) return;
           const text = (el.textContent || "").replace(/\s+/g, " ").trim();
-          if (text && text.length < 300) {
-            found.add(text);
+          if (!text) return;
+          if (text.length < 4 || text.length > 200) return;
+          if (
+            !/error|invalid|required|please|incorrect|missing|cannot|unable|too (short|long)|must be|enter a/i.test(text)
+          ) {
+            return;
           }
+          found.add(text);
         });
       }
       return Array.from(found).slice(0, 8);
@@ -211,17 +222,44 @@ export async function readPage(page: Page | undefined): Promise<PageSnapshot> {
     return { ...EMPTY_SNAPSHOT };
   }
 
-  await page.waitForLoadState("domcontentloaded").catch(() => undefined);
-  await page.waitForTimeout(200).catch(() => undefined);
+  // Wait for the tab to be idle (load event + networkidle + readyState complete
+  // + no visible spinners). Best-effort with a 10s cap; better than racing the
+  // SPA's hydration with a fixed sleep.
+  await waitForPageIdle(page, { maxMs: 10000, settleMs: 250 });
 
-  const [url, title, formResult, optionGroups, primaryButtons, inlineErrors] = await Promise.all([
-    Promise.resolve(page.url()),
-    page.title().catch(() => ""),
-    inspectFormFields(page),
-    buildOptionGroups(page),
-    collectButtons(page),
-    collectInlineErrors(page),
-  ]);
+  const [url, title, formResult, optionGroups, primaryButtons, inlineErrors, planCardsPresent] =
+    await Promise.all([
+      Promise.resolve(page.url()),
+      page.title().catch(() => ""),
+      inspectFormFields(page),
+      buildOptionGroups(page),
+      collectButtons(page),
+      collectInlineErrors(page),
+      hasPlanCards(page),
+    ]);
+
+  if (planCardsPresent) {
+    const cards = await extractPlanCards(page);
+    if (cards.length > 0) {
+      optionGroups.push({
+        groupLabel: "Plan",
+        options: cards.map((c) => ({ label: c.summary, selected: c.selected })),
+        kind: "plan-card",
+      });
+    }
+  }
+
+  const selectFields = await scanSelectFields(page);
+  for (const sel of selectFields) {
+    if (sel.options.length === 0) continue;
+    optionGroups.push({
+      groupLabel: sel.fieldLabel,
+      options: sel.options
+        .filter((o) => !/^(--|please select|select)/i.test(o.label))
+        .map((o) => ({ label: o.label, selected: o.selected })),
+      kind: "select",
+    });
+  }
 
   return {
     url,
@@ -240,12 +278,18 @@ export function summarizeSnapshot(snapshot: PageSnapshot): string {
 
   if (snapshot.optionGroups.length > 0) {
     lines.push("");
-    lines.push("Option groups:");
+    lines.push("Option groups (use select_option with the groupLabel and the option label):");
     for (const group of snapshot.optionGroups) {
+      const kindHint =
+        group.kind === "select"
+          ? " [dropdown]"
+          : group.kind === "plan-card"
+          ? " [card]"
+          : "";
       const opts = group.options
         .map((o) => (o.selected ? `[x] ${o.label}` : `[ ] ${o.label}`))
         .join(", ");
-      lines.push(`  - ${group.groupLabel}: ${opts}`);
+      lines.push(`  - ${group.groupLabel}${kindHint}: ${opts}`);
     }
   }
 
@@ -260,10 +304,13 @@ export function summarizeSnapshot(snapshot: PageSnapshot): string {
 
   if (snapshot.primaryButtons.length > 0) {
     lines.push("");
-    lines.push("Buttons:");
+    lines.push("Buttons (use the exact label text below for buttonLabel — do NOT include any annotation):");
     for (const b of snapshot.primaryButtons) {
-      const flag = b.isRisky ? " (risky)" : "";
-      lines.push(`  - ${b.label}${flag}`);
+      lines.push(`  - ${b.label}`);
+    }
+    const risky = snapshot.primaryButtons.filter((b) => b.isRisky).map((b) => b.label);
+    if (risky.length > 0) {
+      lines.push(`Risky buttons (require ask_user confirmation BEFORE clicking): ${risky.join(" | ")}`);
     }
   }
 

@@ -7,10 +7,10 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "type-check": "tsc --noEmit -p tsconfig.json",
-    "dev": "npm run build && npm run start",
-    "start": "node dist/index.js",
-    "start:voice": "node dist/index.js --voice",
-    "dev:voice": "pkill -f 'uvicorn scripts.whisper_server' 2>/dev/null; sleep 1; python3 -m uvicorn scripts.whisper_server:app --host 127.0.0.1 --port 8282 & WHISPER_PID=$!; trap 'kill $WHISPER_PID' EXIT; sleep 3 && npm run build && npm run start:voice",
+    "dev": "npm run build && ALLOW_SENSITIVE_FILL=true npm run start",
+    "start": "node --env-file-if-exists=.env dist/index.js",
+    "start:voice": "node --env-file-if-exists=.env dist/index.js --voice",
+    "dev:voice": "pkill -f 'uvicorn scripts.whisper_server' 2>/dev/null; sleep 1; python3 -m uvicorn scripts.whisper_server:app --host 127.0.0.1 --port 8282 & WHISPER_PID=$!; trap 'kill $WHISPER_PID' EXIT; sleep 3 && npm run build && ALLOW_SENSITIVE_FILL=true npm run start:voice",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

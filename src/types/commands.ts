@@ -25,8 +25,8 @@ export const commandTypeSchema = z.enum([
 
 export const commandSchema = z.object({
   type: commandTypeSchema,
-  target: z.string().optional(),
-  value: z.string().optional(),
+  target: z.string().nullable(),
+  value: z.string().nullable(),
 });
 
 export type CommandType = z.infer<typeof commandTypeSchema>;

@@ -77,9 +77,9 @@ export async function inspectFormFields(page: Page | undefined): Promise<FormIns
       const label = await getAssociatedLabel(page, id);
 
       const displayName = label || ariaLabel || placeholder || name || id || autocomplete || "unknown";
-      const sensitive = isSensitiveField(
-        `${displayName} ${placeholder} ${ariaLabel} ${name} ${autocomplete}`
-      );
+      const sensitive =
+        typeAttr === "password" ||
+        isSensitiveField(`${displayName} ${placeholder} ${ariaLabel} ${name} ${autocomplete}`);
 
       fields.push({
         displayName,

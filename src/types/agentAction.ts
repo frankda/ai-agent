@@ -9,16 +9,16 @@ export const agentActionSchema = z.object({
     "click_button",
     "done",
   ]),
-  url: z.string().optional(),
-  question: z.string().optional(),
-  suggestions: z.array(z.string()).optional(),
-  groupLabel: z.string().optional(),
-  optionLabel: z.string().optional(),
-  fieldLabel: z.string().optional(),
-  value: z.string().optional(),
-  buttonLabel: z.string().optional(),
-  reason: z.string().optional(),
-  thought: z.string().optional(),
+  url: z.string().nullable(),
+  question: z.string().nullable(),
+  suggestions: z.array(z.string()).nullable(),
+  groupLabel: z.string().nullable(),
+  optionLabel: z.string().nullable(),
+  fieldLabel: z.string().nullable(),
+  value: z.string().nullable(),
+  buttonLabel: z.string().nullable(),
+  reason: z.string().nullable(),
+  thought: z.string().nullable(),
 });
 
 export type AgentActionRaw = z.infer<typeof agentActionSchema>;
@@ -55,7 +55,7 @@ export function normalizeAgentAction(raw: AgentActionRaw): AgentAction | null {
         thought,
       };
     case "fill_field":
-      if (!raw.fieldLabel || raw.value === undefined) return null;
+      if (!raw.fieldLabel || raw.value === undefined || raw.value === null) return null;
       return {
         type: "fill_field",
         fieldLabel: raw.fieldLabel.trim(),

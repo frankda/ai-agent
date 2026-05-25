@@ -1,13 +1,6 @@
 import { Output, generateText } from "ai";
-import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { commandSchema, type Command } from "./types/commands.js";
-
-const localProvider = createOpenAICompatible({
-  name: "local",
-  baseURL: process.env.LOCAL_LLM_BASE_URL || "http://127.0.0.1:1234/v1",
-  apiKey: process.env.LOCAL_LLM_API_KEY || "local",
-  supportsStructuredOutputs: true,
-});
+import { getModel } from "./llm.js";
 
 function normalizeText(text: string | null | undefined): string {
   return (text || "").replace(/\s+/g, " ").trim();
@@ -194,7 +187,7 @@ export async function parseCommandWithAI(message: string): Promise<Command> {
 
   try {
     const result = await generateText({
-      model: localProvider.chatModel(process.env.LOCAL_LLM_MODEL || "local-model"),
+      model: getModel(),
       temperature: 0,
       output: Output.object({
         schema: commandSchema,

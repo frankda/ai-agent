@@ -5,9 +5,13 @@ export interface SnapshotOption {
   selected: boolean;
 }
 
+export type OptionGroupKind = "radio" | "select" | "plan-card";
+
 export interface SnapshotOptionGroup {
   groupLabel: string;
   options: SnapshotOption[];
+  /** How this group is rendered in the DOM. Used by agentTools to pick the right click strategy. */
+  kind?: OptionGroupKind;
 }
 
 export interface SnapshotButton {

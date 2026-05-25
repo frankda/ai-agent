@@ -40,29 +40,56 @@ export async function getLabelForInput(page: Page, inputElement: Locator): Promi
  * Radio/checkbox inputs are often hidden with CSS, so we try to click them even if not visible,
  * or we click their associated label.
  */
+/**
+ * Score a label match. Higher = better. 0 = no match.
+ *   4 = exact (case-insensitive trim)
+ *   3 = word-boundary match
+ *   2 = bidirectional substring (loose)
+ */
+export function scoreLabelMatch(label: string, search: string): number {
+  const a = (label || "").toLowerCase().trim();
+  const b = (search || "").toLowerCase().trim();
+  if (!a || !b) return 0;
+  if (a === b) return 4;
+
+  const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const wb = (haystack: string, needle: string): boolean =>
+    new RegExp(`\\b${escape(needle)}\\b`, "i").test(haystack);
+
+  if (wb(a, b) || wb(b, a)) return 3;
+  if (a.includes(b) || b.includes(a)) return 2;
+  return 0;
+}
+
 export async function tryClickByRadioOrCheckbox(
   page: Page,
   searchTerm: string
 ): Promise<{ success: boolean; matchedText?: string }> {
   const inputLocator = page.locator("input[type='radio'], input[type='checkbox']");
   const count = await inputLocator.count().catch(() => 0);
-  const searchLower = searchTerm.toLowerCase();
+
+  type Candidate = { item: Locator; label: string; score: number };
+  const candidates: Candidate[] = [];
 
   for (let i = 0; i < count; i++) {
     try {
       const item = inputLocator.nth(i);
-
-      // Get label text (aria-label, value, or associated label)
       const labelText = await getLabelForInput(page, item);
+      if (!labelText) continue;
+      const score = scoreLabelMatch(labelText, searchTerm);
+      if (score > 0) candidates.push({ item, label: labelText, score });
+    } catch {
+      // skip
+    }
+  }
 
-      if (!labelText) {
-        continue;
-      }
+  candidates.sort((a, b) => b.score - a.score);
 
-      const labelLower = labelText.toLowerCase();
-
-      // Check for substring match (bidirectional: label contains search OR search contains label)
-      if (labelLower.includes(searchLower) || searchLower.includes(labelLower)) {
+  for (const cand of candidates) {
+    const item = cand.item;
+    const labelText = cand.label;
+    try {
+      {
         const isChecked = async (): Promise<boolean> => {
           return item.isChecked().catch(() => false);
         };
@@ -159,38 +186,34 @@ export async function tryClickByButton(
 ): Promise<{ success: boolean; matchedText?: string }> {
   const buttonLocator = page.locator("button, input[type='button'], input[type='submit'], [role='button']");
   const count = await buttonLocator.count().catch(() => 0);
-  const searchLower = searchTerm.toLowerCase();
+
+  type Candidate = { item: Locator; text: string; score: number };
+  const candidates: Candidate[] = [];
 
   for (let i = 0; i < count; i++) {
     try {
       const item = buttonLocator.nth(i);
       const visible = await item.isVisible().catch(() => false);
-
-      if (!visible) {
-        continue;
-      }
-
+      if (!visible) continue;
       let text = await item.innerText().catch(() => "");
       text = text.replace(/\s+/g, " ").trim();
-
-      if (!text) {
-        continue;
-      }
-
-      const textLower = text.toLowerCase();
-
-      // Check for substring match (bidirectional: label contains search OR search contains label)
-      if (textLower.includes(searchLower) || searchLower.includes(textLower)) {
-        await item.click().catch(() => undefined);
-        await page.waitForLoadState("domcontentloaded").catch(() => undefined);
-
-        return {
-          success: true,
-          matchedText: text,
-        };
-      }
+      if (!text) continue;
+      const score = scoreLabelMatch(text, searchTerm);
+      if (score > 0) candidates.push({ item, text, score });
     } catch {
-      // Ignore individual failures.
+      // skip
+    }
+  }
+
+  candidates.sort((a, b) => b.score - a.score);
+
+  for (const cand of candidates) {
+    try {
+      await cand.item.click().catch(() => undefined);
+      await page.waitForLoadState("domcontentloaded").catch(() => undefined);
+      return { success: true, matchedText: cand.text };
+    } catch {
+      // try next
     }
   }
 
